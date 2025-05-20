@@ -91,6 +91,40 @@ When you use **Amazon ElastiCache for Redis**, AWS takes care of managing Redis 
 - **Leaderboard for a Gaming App**: Redis provides an efficient way to track real-time scores and rankings using sorted sets. ElastiCache for Redis can be used to store these rankings in-memory, ensuring that the game can update and retrieve rankings quickly.
 - **Shopping Cart**: Use Redis to store session data, cart information, and user preferences in real time. This helps in quickly retrieving the data without hitting a database every time.
 
+### **Good Use Cases for Redis**  
+
+1. **Session Storage**  
+   - Primary use case for Redis.  
+   - Early web apps had single servers with state, but scaling for high availability and performance required distributed session storage.  
+   - Redis is a popular solution for this.  
+
+2. **Web Page Caching**  
+   - Store pre-rendered server-side content in Redis.  
+   - Acts as a database cache to reduce latency and query load on relational databases.  
+   - Popularized in the Rails community for cost optimization by minimizing database hits.  
+
+3. **Pub/Sub Messaging**  
+   - Supports low-latency microservice communication.  
+   - Useful for real-time messaging between services.  
+
+4. **Application State in Serverless Environments**  
+   - Lambda functions need shared state with low latency.  
+   - Redis serves as a fast state store instead of point-to-point communication.  
+
+5. **S3 Object Lookup Optimization**  
+   - S3 is an object store, not a file system, making key lookups expensive.  
+   - Solution:  
+     - Capture S3 object creation events via EventBridge.  
+     - Store object metadata in Redis for fast prefix-based lookups.  
+     - Avoids slow S3 `ListObjects` pagination for large buckets.  
+   - Trade-offs:  
+     - Requires sufficient memory.  
+     - Must handle high write throughput with proper scaling.  
+
+6. **Persistence Considerations**  
+   - Redis’s non-serverless nature may require additional scaling strategies.  
+   - Further discussion needed on persistence mechanisms.
+
 ### How ElastiCache Works:
 
 - **Setting up ElastiCache**: You start by creating a cache cluster in the AWS Management Console. You choose either Redis or Memcached as the engine, configure the cluster (choose instance types, enable security features, etc.), and deploy it in your Virtual Private Cloud (VPC).
