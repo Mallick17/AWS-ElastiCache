@@ -5,8 +5,9 @@ Amazon ElastiCache is a fully managed, scalable, and secure in-memory caching se
 ### Scenario:
 - Imagine you're running a **web application** in a **containerized environment** (using Amazon ECS or EKS) and you're distributing content globally via **CloudFront** to reduce latency for users worldwide.
 - Here’s how **ElastiCache** fits into this architecture:
-  - **Visualizing It:**
-  - **User Request → CloudFront (caches static content) → Backend (ECS/EKS) → ElastiCache (in-memory) → RDS/DynamoDB (if cache miss)**
+  > **Visualizing It:**
+  > 
+  > **User Request → CloudFront (caches static content) → Backend (ECS/EKS) → ElastiCache (in-memory) → RDS/DynamoDB (if cache miss)**
 - This architecture provides **faster data access** and **reduces database load**, leading to better performance for your application.
 
 ### 1. **Initial Request Flow** (Without ElastiCache):
