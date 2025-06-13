@@ -65,7 +65,7 @@ Now, let’s introduce **Amazon ElastiCache** into the system to improve this pr
 5. Cost Efficiency
 
 <details>
-   <summary>Click to View Detailed Insights on Perfoemance and Reduced Latency</summary>
+   <summary>Click to View Detailed Insights on Performance and Reduced Latency</summary>
 
 1. **Fast Data Retrieval with ElastiCache**:
 
@@ -93,33 +93,8 @@ Now, let’s introduce **Amazon ElastiCache** into the system to improve this pr
 
 </details>
 
----
-
-### Example Flow with Caching and CloudFront:
-
-Let’s break down a practical flow of this architecture:
-
-1. **User Request**: A user visits the website to view a product (e.g., Product A).
-2. **CloudFront Cache Check**:
-
-   * If **Product A** info is cached in CloudFront (static content like images), it’s served directly from the CDN.
-   * If **Product A** info is **not cached** in CloudFront, it sends the request to the backend containers (ECS/EKS).
-3. **Backend with ElastiCache**:
-
-   * The backend queries **ElastiCache** to see if **Product A** data is in memory.
-   * If **cached in ElastiCache**, it returns **instantly**.
-   * If **not cached**, it fetches data from **RDS**, stores it in **ElastiCache**, and returns the response to CloudFront.
-4. **Future Requests**:
-
-   * Any future requests for **Product A** (from any region) will benefit from CloudFront caching for static content and ElastiCache caching for dynamic content, making the whole process much faster.
-
-> 🛡 **Summary:**
-> 
-> * **ElastiCache** reduces the load on your **database** by caching frequently requested data, ensuring faster data retrieval.
-> * It **improves application performance** by storing and serving data from memory rather than having to query the database for every request.
-> * It works **seamlessly with CloudFront** to reduce latency both at the **edge (CloudFront)** and at the **backend (ElastiCache)**, delivering a highly responsive user experience.
-
----
+<details>
+   <summary>Key Features & Use Cases of Amazon ElastiCache</summary>
 
 ### Key Features of Amazon ElastiCache:
 1. Fully managed services
@@ -207,6 +182,38 @@ Let’s break down a practical flow of this architecture:
 When you use **Amazon ElastiCache for Redis**, AWS takes care of managing Redis clusters, scaling, monitoring, and availability. You only need to focus on the application logic, without worrying about the underlying infrastructure.
 
 </details>
+
+</details>
+
+---
+
+### Example Flow with Caching and CloudFront:
+
+Let’s break down a practical flow of this architecture:
+
+1. **User Request**: A user visits the website to view a product (e.g., Product A).
+2. **CloudFront Cache Check**:
+
+   * If **Product A** info is cached in CloudFront (static content like images), it’s served directly from the CDN.
+   * If **Product A** info is **not cached** in CloudFront, it sends the request to the backend containers (ECS/EKS).
+3. **Backend with ElastiCache**:
+
+   * The backend queries **ElastiCache** to see if **Product A** data is in memory.
+   * If **cached in ElastiCache**, it returns **instantly**.
+   * If **not cached**, it fetches data from **RDS**, stores it in **ElastiCache**, and returns the response to CloudFront.
+4. **Future Requests**:
+
+   * Any future requests for **Product A** (from any region) will benefit from CloudFront caching for static content and ElastiCache caching for dynamic content, making the whole process much faster.
+
+> 🛡 **Summary:**
+> 
+> * **ElastiCache** reduces the load on your **database** by caching frequently requested data, ensuring faster data retrieval.
+> * It **improves application performance** by storing and serving data from memory rather than having to query the database for every request.
+> * It works **seamlessly with CloudFront** to reduce latency both at the **edge (CloudFront)** and at the **backend (ElastiCache)**, delivering a highly responsive user experience.
+
+---
+
+
 
 ### Key Differences Between ElastiCache with Redis and Memcached:
 
