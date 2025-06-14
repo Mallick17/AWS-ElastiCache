@@ -247,7 +247,16 @@ Let’s break down a practical flow of this architecture:
 - **Shopping Cart**: Use Redis to store session data, cart information, and user preferences in real time. This helps in quickly retrieving the data without hitting a database every time.
 
 ### **Good Use Cases for Redis**  
+1. **Session Storage**
+2. **Web Page Caching**  
+3. **Pub/Sub Messaging** 
+4. **Application State in Serverless Environments**  
+5. **S3 Object Lookup Optimization**  
+6. **Persistence Considerations** 
 
+<details>
+  <summary>Explaination of Use Cases Mentioned Above</summary>
+   
 1. **Session Storage**  
    - Primary use case for Redis.  
    - Early web apps had single servers with state, but scaling for high availability and performance required distributed session storage.  
@@ -279,6 +288,8 @@ Let’s break down a practical flow of this architecture:
 6. **Persistence Considerations**  
    - Redis’s non-serverless nature may require additional scaling strategies.  
    - Further discussion needed on persistence mechanisms.
+
+</details>
 
 ### How ElastiCache Works:
 
