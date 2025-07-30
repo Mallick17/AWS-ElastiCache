@@ -557,5 +557,59 @@ Use this **bucket policy** (adjust region/bucket name):
 
 ---
 
+## Restore ElastiCache Backup into a New Cache
+You can restore:
+
+* A **Redis OSS backup** → into a new **Redis OSS** cache
+* A **Valkey backup** → into a new **Valkey** cache
+* A **Memcached backup** → into a new **Memcached** serverless cache
+
+### **Option 1: Restore to Serverless Cache (Console)**
+
+> Supports **Valkey 7.2+** and **Redis OSS 5.0+** backup `.rdb` files
+
+#### Steps:
+
+1. Go to [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
+2. From the left nav, select **Backups**
+3. Select the checkbox next to the backup you want to restore
+4. Click **Actions → Restore**
+5. In the **Restore dialog**:
+
+   * Enter a name for your new serverless cache
+   * Add a description (optional)
+6. Click **Create**
+
+> 🔄 AWS will provision a new serverless cache and **import the `.rdb` snapshot** into it.
+
+### **Option 2: Restore to Self-Designed Cluster (Console)**
+
+> Lets you configure everything — instance size, replicas, shards, networking, etc.
+
+#### Steps:
+
+1. Go to [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
+2. Navigate to **Backups**
+3. Select the backup you'd like to restore
+4. Click **Actions → Restore**
+5. Choose **Design your own cache**
+6. Fill out configuration options:
+
+   * **Cluster Name**
+   * **Node type** (e.g. `cache.t4g.medium`)
+   * **Number of shards**, **replicas**
+   * **Subnet group**, **VPC**, **Security Groups**
+7. Click **Create**
+
+> AWS will launch a new Redis/Valkey cluster and restore the snapshot during cluster creation.
+
+---
+
+> **_Notes_**:
+> Restores **do not** overwrite existing clusters; always create a **new** one.
+> After restore, your data is available instantly once the new cache is **available**.
+> This works for both **automatic** and **manual** backups.
+
+---
 
 
