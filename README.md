@@ -713,3 +713,56 @@ Metrics can be visualized in CloudWatch dashboards or used with alarms and AWS L
 </details>
 
 ---
+
+## Logs
+Logs in ElastiCache help with monitoring slow-performing commands (Slow Logs) and engine-level activity (Engine Logs). These logs are crucial for identifying performance bottlenecks and internal errors.
+
+### Slow Logs
+* **What it is:** Records Redis commands that exceed a certain execution time threshold.
+* **Why used:** Helps detect slow-performing operations that may degrade performance.
+* **Advantages:** Useful for profiling and optimizing command usage.
+* **Disadvantages:** Disabled by default. Requires enabling and configuring.
+
+<details>
+  <summary>Click to view the Properties Shown and Explained</summary>
+  
+| Property                 | Description                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| **Enabled**              | No (Disabled by default)                                                                           |
+| **Log destination type** | Type of log service where logs are sent. Example: `cloudwatch-logs`.                               |
+| **Log format**           | Format used to structure the log data. Example: `text` or `json`.                                  |
+| **Log destination**      | Target where the logs will be stored. Example: CloudWatch Log Group ARN.                           |
+| **Log status**           | Displays whether the log delivery is working correctly. Example: `active`.                         |
+| **Log error message**    | Describes any errors encountered during log delivery. Example: `Access denied to CloudWatch Logs.` |
+
+**Example Use Case:**
+Enable slow logs and set the threshold to `1000` microseconds to log all commands taking over 1ms. This helps pinpoint inefficient queries like `SMEMBERS large-set`.
+
+</details>
+
+### Engine Logs
+* **What it is:** Captures engine-level events like restarts, connection failures, and internal errors.
+* **Why used:** Useful for operational monitoring and debugging.
+* **Advantages:** Can help detect crashes, restart causes, and memory failures.
+* **Disadvantages:** Requires manual enabling and integration with CloudWatch or another logging destination.
+
+<details>
+  <summary>Click to view the Properties Shown and Explained</summary>
+  
+| Property                 | Description                                                                                        |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| **Enabled**              | No (Disabled by default)                                                                           |
+| **Log destination type** | Type of log service where logs are sent. Example: `cloudwatch-logs`.                               |
+| **Log format**           | Format used to structure the log data. Example: `text` or `json`.                                  |
+| **Log destination**      | Target where the logs will be stored. Example: CloudWatch Log Group ARN.                           |
+| **Log status**           | Displays whether the log delivery is working correctly. Example: `active`.                         |
+| **Log error message**    | Describes any errors encountered during log delivery. Example: `Access denied to CloudWatch Logs.` |
+
+**Example Use Case:**
+Enable engine logs and route them to CloudWatch Logs to monitor for out-of-memory errors or failed snapshot saves (`RDB save failed`), and configure CloudWatch Alarms to alert operations teams.
+
+These logs are essential for maintaining visibility into cache performance and health. Enable them via the AWS Console or CLI depending on your operational requirements.
+
+</details>
+
+---
