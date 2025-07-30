@@ -804,3 +804,42 @@ To enable point-in-time recovery, you can enable automated backups with a retent
 These features are critical for operational resilience and disaster recovery. Maintenance windows allow safe patching, and backups ensure recoverability in case of data loss.
 
 ---
+
+## Service Updates
+Service updates are AWS-initiated patches or enhancements to the ElastiCache engine. These updates can be related to engine features, security, or operational improvements. You can apply them manually or wait for the auto-update deadline.
+
+| Field                       | Description                                                                                         | Example                                |
+| --------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Service Update Name**     | Unique name of the update for tracking.                                                             | `elasticache-july-patch-update-202507` |
+| **Cluster Update Status**   | Indicates if the update has been applied. Values include `Complete`, `Not-applied`, or `Available`. | `Not-applied`                          |
+| **Update Type**             | Nature of the update. Typically `engine-update`, `security-update`, etc.                            | `engine-update`                        |
+| **Apply-by Date**           | Deadline before which the update should be manually applied.                                        | `August 5, 2025, 17:29:59 (UTC+05:30)` |
+| **Release Date**            | The date the update was released.                                                                   | `July 6, 2025, 17:30:00 (UTC+05:30)`   |
+| **Update Severity**         | Indicates importance: `Low`, `Medium`, `Important`, `Critical`.                                     | `Important`                            |
+| **Status**                  | General availability of the update.                                                                 | `Available`                            |
+| **Cluster Update Modified** | When the status was last changed.                                                                   | `July 6, 2025, 23:11:18 (UTC+05:30)`   |
+| **Scheduled Auto Update**   | If applicable, the date when AWS will automatically apply the update.                               | `-`                                    |
+
+
+<details>
+  <summary>Click to view the Sample Service Updates Table</summary>
+  
+**Sample Service Updates Table:**
+
+| Service Update Name                  | Cluster Update Status | Update Type     | Apply-by Date                        | Release Date                        | Update Severity | Status    | Cluster Update Modified | Scheduled Auto Update |
+| ------------------------------------ | --------------------- | --------------- | ------------------------------------ | ----------------------------------- | --------------- | --------- | ----------------------- | --------------------- |
+| elasticache-july-patch-update-202507 | Not-applied           | engine-update   | August 5, 2025, 17:29:59 (UTC+05:30) | July 6, 2025, 17:30:00 (UTC+05:30)  | Important       | Available | July 6, 2025, 23:11:18  | -                     |
+| elasticache-20250603-arm             | Complete              | security-update | July 24, 2025, 23:29:59 (UTC+05:30)  | June 24, 2025, 23:30:00 (UTC+05:30) | Medium          | Available | June 25, 2025, 02:35:12 | -                     |
+
+</details>
+
+**Example Use Case:**
+
+* Regularly review this section to apply non-critical updates before the deadline to avoid unplanned auto-updates.
+* Critical updates may be auto-applied even if not manually triggered.
+
+This ensures stability, performance, and security compliance of your ElastiCache deployments.
+
+---
+
+
