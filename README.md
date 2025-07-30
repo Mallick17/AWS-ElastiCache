@@ -344,4 +344,56 @@ Configuration tools include:
 If your app is running in production, enable automatic backups with a 7-day retention period and schedule the backup window during low-traffic hours (e.g., `23:30–00:30 UTC`) to ensure minimal operational interference.
 
 ---
+Here’s a concise and easy-to-understand summary of **manual backups** for documentation, following the same style as the automatic backup summary:
+
+---
+
+## Taking manual backups
+### Key Features
+
+* **Persistent:** Manual backups are **retained indefinitely** until you choose to delete them.
+* **Independent:** Even if the cache is deleted, manual backups remain available.
+* **User-Controlled:** Manual backups must be deleted manually—no automatic expiration.
+
+### How to Create Manual Backups
+
+You can create manual backups via:
+
+* **ElastiCache Console**
+* **AWS CLI**
+* **ElastiCache API**
+
+You can also generate a manual backup by:
+
+* **Copying an existing backup** (manual or automatic)
+* **Creating a final backup** before deleting a cache
+
+### Creating Manual Backup via Console
+
+1. Sign in to the [ElastiCache Console](https://console.aws.amazon.com/elasticache/).
+2. In the navigation pane, select:
+
+   * *Valkey caches*, *Redis OSS caches*, or *Memcached caches*
+3. Select the checkbox next to the cache you want to back up.
+4. Click **Backup**.
+5. Enter a **Backup Name** in the dialog.
+   *Naming rules:*
+
+   * 1–40 characters (letters, numbers, or hyphens)
+   * Must start with a letter
+   * No two consecutive hyphens
+   * Must not end with a hyphen
+6. Click **Create Backup**.
+
+> 📌 The cache’s status will temporarily change to **snapshotting** during the backup process.
+
+### Supported Configurations
+
+Manual backups are supported for:
+
+* **Cluster mode enabled** and **disabled** Redis/Valkey
+* **All cache types** (Valkey, Redis OSS, Memcached)
+
+---
+
 
