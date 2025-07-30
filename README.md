@@ -766,3 +766,41 @@ These logs are essential for maintaining visibility into cache performance and h
 </details>
 
 ---
+
+## Maintenance and Backups
+
+### Maintenance
+
+* **Maintenance Window:** Scheduled weekly maintenance is set for `Sunday 18:30 - Sunday 19:30 UTC`. During this window, AWS may apply critical updates.
+* **Auto Upgrade Minor Versions:** *Disabled*. This means that patch-level updates (e.g., from 7.0.1 to 7.0.2) won't be automatically applied.
+* **Notification ARN:** *Disabled*. No Amazon SNS notification target is configured for maintenance-related alerts.
+
+**Example Use Case:**
+If you want to be alerted before any maintenance actions, set up an SNS topic and subscribe your email to receive notifications by configuring the Notification ARN.
+
+### Backup
+
+* **Automatic Backups:** *Disabled*. No daily backups are currently configured.
+* **Backup Retention Period:** `0 days`. Since automated backups are disabled, retention is not applicable.
+* **Backup Window:** `23:30-00:30 UTC`. If enabled, automated backups would be taken during this window.
+
+### Backups Table
+
+| Column          | Description                                                                  |
+| --------------- | ---------------------------------------------------------------------------- |
+| **Backup Name** | The name assigned to the backup. E.g., `rt-redis-backup-2025-07-30-23-30`.   |
+| **Backup Type** | Indicates if the backup is automatic or manual. E.g., `automated`, `manual`. |
+| **Status**      | Current state of the backup. E.g., `available`, `creating`, `failed`.        |
+| **Cache Size**  | The total memory used by the cache at the time of backup. E.g., `1.5 GB`.    |
+| **Shards**      | Number of shards included in the backup (relevant for cluster mode enabled). |
+
+| Backup Name | Backup Type | Status | Cache Size | Shards |
+| ----------- | ----------- | ------ | ---------- | ------ |
+| *(None)*    | -           | -      | -          | -      |
+
+**Example Use Case:**
+To enable point-in-time recovery, you can enable automated backups with a retention period (e.g., `7 days`) and ensure the backup window avoids peak traffic.
+
+These features are critical for operational resilience and disaster recovery. Maintenance windows allow safe patching, and backups ensure recoverability in case of data loss.
+
+---
