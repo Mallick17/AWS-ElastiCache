@@ -396,4 +396,38 @@ Manual backups are supported for:
 
 ---
 
+Here’s a summarized and document-ready explanation of **Creating a Final Backup**:
+
+---
+
+## Creating a Final Backup
+A **final backup** allows you to preserve your cache data right before deleting a cache or cluster. This ensures you have a snapshot you can restore from later, even after deletion.
+
+### Key Points
+
+* Available for:
+
+  * **Valkey, Redis OSS**, and **Memcached** *serverless caches*
+  * **Valkey** and **Redis OSS** *self-designed clusters*
+* Can be created using:
+
+  * **ElastiCache Console**
+  * **AWS CLI**
+  * **ElastiCache API**
+
+### Creating a Final Backup via Console
+
+1. Navigate to the **ElastiCache console**.
+2. Select the cache or cluster you wish to delete.
+3. Choose **Delete**.
+4. In the **Delete dialog box**, under **Create backup**, select **Yes**.
+5. Enter a name for the backup.
+
+   * This name should follow standard naming rules (start with a letter, up to 40 characters, etc.).
+6. Proceed with the deletion.
+
+> ✅ The final backup will be saved before the cache or cluster is permanently deleted.
+
+---
+
 
