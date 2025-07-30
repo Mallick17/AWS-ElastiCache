@@ -730,3 +730,129 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 
 ---
 
+# **Seeding a New ElastiCache for Redis OSS Cluster from an External Backup (.rdb)**
+
+### Use Case
+
+Migrate data from an **externally managed Valkey or Redis OSS** instance to a new **ElastiCache for Redis OSS self-designed cluster** using a `.rdb` backup file.
+
+## **Migration Steps**
+
+### **Step 1: Create a Valkey or Redis OSS Backup**
+
+* Connect to your Redis OSS or Valkey instance.
+* Create a backup using:
+
+  * `BGSAVE` (asynchronous, preferred)
+  * `SAVE` (synchronous)
+* Locate the resulting `.rdb` file (usually in the data directory).
+
+---
+
+### **Step 2: Create an S3 Bucket & Folder**
+
+* Go to [Amazon S3 Console](https://console.aws.amazon.com/s3/)
+* Create a **bucket**:
+
+  * Must be **DNS-compliant**
+  * Must be in the **same AWS Region** as your target ElastiCache cluster
+* Create a **folder** inside the bucket
+* Example bucket/folder path:
+  `myBucket/myFolder`
+
+---
+
+### **Step 3: Upload the .rdb File to S3**
+
+* Upload the `.rdb` file into the folder
+* Example file path:
+  `myBucket/myFolder/redis-backup.rdb`
+
+---
+
+### **Step 4: Grant ElastiCache Access to the File**
+
+Depending on the AWS Region type:
+
+#### 🔸 **For Default AWS Regions**
+
+Use **Canonical ID**:
+`540804c33a284a299d2547575ce1010f2312ef3da9b3a053c8bc45bf233e4353`
+
+Via **S3 console**:
+
+* Open `.rdb` file
+* Go to **Permissions > Access for other AWS accounts**
+* Add grantee with required permissions:
+
+  * List object
+  * Read object
+  * Read ACL
+
+#### 🔸 **For Opt-in AWS Regions**
+
+Update the **S3 Bucket Policy** with:
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "ap-east-1.elasticache-snapshot.amazonaws.com"
+  },
+  "Action": [
+    "s3:GetObject",
+    "s3:ListBucket",
+    "s3:GetBucketAcl"
+  ],
+  "Resource": [
+    "arn:aws:s3:::myBucket",
+    "arn:aws:s3:::myBucket/myFolder/redis-backup.rdb"
+  ]
+}
+```
+
+> Replace `ap-east-1` with your actual AWS Region
+
+---
+
+### **Step 5: Create the ElastiCache Cluster (Seed with Backup)**
+
+#### 🔹 Using the **Console**
+
+* Choose **Restore from backups**
+* Under **Backup Source**, select **Other backups**
+* Provide S3 path:
+  `myBucket/myFolder/redis-backup.rdb`
+
+#### 🔹 Using **AWS CLI**
+
+```bash
+aws elasticache create-cache-cluster \
+  --cache-cluster-id my-new-cluster \
+  --engine redis \
+  --snapshot-arns arn:aws:s3:::myBucket/myFolder/redis-backup.rdb \
+  --cache-node-type cache.r6g.large \
+  --num-cache-nodes 1
+```
+
+#### 🔹 Using **ElastiCache API**
+
+Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGroup` with the `.rdb` file ARN.
+
+---
+
+## ⚠**Important Notes**
+
+* You **cannot** seed a **cluster-mode disabled** Redis cluster from a backup created on a **cluster-mode enabled** one.
+* Make sure the node type has enough memory for the data in your `.rdb` file.
+* If the backup is too large, the cluster will show `restore-failed` status.
+* You **must delete and recreate** the cluster in case of restore failure.
+
+---
+
+## Monitoring
+
+* Check restore progress in **ElastiCache Console > Events**
+* Or use CLI/API to retrieve status messages
+
+---
