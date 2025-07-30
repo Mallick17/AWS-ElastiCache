@@ -302,3 +302,235 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+# Elasticache Redis Parameters
+
+## Cluster Details
+### Cluster Name
+
+* **What it is:** Unique identifier for the cluster.
+* **Why used:** Distinguishes this Redis cluster from others; important for management, automation, and monitoring.
+* **Advantages:** Easy to reference; clearly identifies the purpose/environment.
+* **Disadvantages:** Must conform to AWS naming rules.
+* **Example:** `rt-testing-corporate-redis` used in scripts and monitoring tools.
+
+### Description
+
+* **What it is:** Human-readable description of the cluster.
+* **Why used:** Helps provide clarity about cluster usage or environment.
+* **Advantages:** Improves documentation and operations.
+* **Disadvantages:** Not used programmatically.
+* **Example:** `rt-testing-corporate-redis-cluster` used for internal reference.
+
+### Node Type (`cache.t4g.micro`)
+
+* **What it is:** Defines hardware configuration (vCPU, memory, networking) for nodes.
+* **Why used:** Controls performance, throughput, and cost.
+* **Advantages:** Allows choosing from low-cost dev nodes to high-throughput production types.
+* **Disadvantages:** Small instances may cause latency or memory pressure.
+* **Example:** `cache.t4g.micro` is cost-efficient for development but not suited for production.
+
+### Status
+
+* **What it is:** Indicates current state of the cluster (e.g., Available, Modifying).
+* **Why used:** Lets you monitor lifecycle and health.
+* **Advantages:** Provides real-time status.
+* **Disadvantages:** None.
+* **Example:** "Available" means ready for reads/writes.
+
+### Engine
+
+* **What it is:** The caching engine used—Redis or Memcached.
+* **Why used:** Determines feature set, compatibility, and behavior.
+* **Advantages:** Choose Redis for persistence and rich features.
+* **Disadvantages:** Redis is more complex than Memcached.
+* **Example:** Redis 7.1.0 supports streams, ACLs, etc.
+
+### Engine Version
+
+* **What it is:** Specific version of the Redis engine.
+* **Why used:** Select version for security, feature availability.
+* **Advantages:** Newer versions have security patches and performance improvements.
+* **Disadvantages:** Compatibility risks with older apps.
+* **Example:** 7.1.0 supports modern Redis features.
+
+### Global Datastore
+
+* **What it is:** Cross-region replication capability.
+* **Why used:** Disaster recovery, global application performance.
+* **Advantages:** Multi-region availability.
+* **Disadvantages:** Higher cost, latency in replication.
+* **Example:** Not used in the cluster shown.
+
+### Global Datastore Role
+
+* **What it is:** Defines whether the cluster is a primary or secondary in a global datastore.
+* **Why used:** Manages replication topology.
+* **Advantages:** Control over write and read behavior across regions.
+* **Disadvantages:** Configuration complexity.
+
+### Update Status
+
+* **What it is:** Indicates if updates are available for Redis engine.
+* **Why used:** Helps apply critical patches.
+* **Advantages:** Improves performance and security.
+* **Disadvantages:** Updates may cause momentary downtime.
+
+### Cluster Mode
+
+* **What it is:** Enables Redis Cluster mode for sharding.
+* **Why used:** Scale out Redis horizontally with shards.
+* **Advantages:** Higher scalability.
+* **Disadvantages:** Requires partitioning data.
+* **Example:** Disabled = simpler single-node architecture.
+
+### Shards
+
+* **What it is:** Logical partitions in cluster mode.
+* **Why used:** Each shard can contain multiple nodes.
+* **Advantages:** Scale by splitting datasets.
+* **Disadvantages:** Only applies if cluster mode enabled.
+
+### Number of Nodes
+
+* **What it is:** Total nodes in the cluster (primary + replicas).
+* **Why used:** Affects fault tolerance and read throughput.
+* **Advantages:** Add replicas for HA and reads.
+* **Disadvantages:** Cost increases.
+
+### Data Tiering
+
+* **What it is:** Moves infrequently accessed data to SSDs.
+* **Why used:** Reduces memory costs for large datasets.
+* **Advantages:** Efficient storage usage.
+* **Disadvantages:** Latency increase for cold data.
+
+### Multi-AZ
+
+* **What it is:** Distributes nodes across AZs for HA.
+* **Why used:** Survive AZ failures.
+* **Advantages:** Fault-tolerant.
+* **Disadvantages:** Requires replicas; costs more.
+
+### Auto-Failover
+
+* **What it is:** Automatically promotes replica if primary fails.
+* **Why used:** Ensures continuity.
+* **Advantages:** Reduces downtime.
+* **Disadvantages:** Only works with Multi-AZ and replicas.
+
+### Encryption in Transit
+
+* **What it is:** TLS encryption for data in motion.
+* **Why used:** Prevents eavesdropping.
+* **Advantages:** Secure.
+* **Disadvantages:** Slight CPU overhead.
+
+### Encryption at Rest
+
+* **What it is:** Encrypts Redis data on disk.
+* **Why used:** Meets compliance like PCI/HIPAA.
+* **Advantages:** Secure.
+* **Disadvantages:** Minimal performance hit.
+
+### Parameter Group
+
+* **What it is:** Defines Redis settings like eviction policy.
+* **Why used:** Tweak Redis behavior.
+* **Advantages:** Tunable.
+* **Disadvantages:** Wrong config = instability.
+* **Example:** Change `maxmemory-policy` to LFU.
+
+### Outpost ARN
+
+* **What it is:** Indicates Outpost integration.
+* **Why used:** Hybrid cloud setups.
+* **Advantages:** On-prem AWS services.
+* **Disadvantages:** Enterprise-only feature.
+
+### Transit Encryption Mode
+
+* **What it is:** Specifies TLS behavior (`preferred`, `required`).
+* **Why used:** Compatibility and security.
+* **Advantages:** Flexible.
+* **Disadvantages:** Potential unencrypted access if not required.
+
+### Primary Endpoint
+
+* **What it is:** DNS name for writing data.
+* **Why used:** Clients connect for writes.
+* **Advantages:** Simplifies connection logic.
+
+### Reader Endpoint
+
+* **What it is:** DNS name for read-only access.
+* **Why used:** Load balance read traffic.
+* **Advantages:** Scalable reads.
+
+### ARN
+
+* **What it is:** AWS identifier for the cluster.
+* **Why used:** IAM permissions and automation.
+* **Advantages:** Uniquely identifies resource.
+
+## Connectivity and Security
+
+### Network Type
+
+* **What it is:** IP version (IPv4).
+* **Why used:** Routing and client compatibility.
+* **Advantages:** Standard.
+
+### Subnet Group Name
+
+* **What it is:** Group of subnets across AZs.
+* **Why used:** Controls where nodes are placed.
+* **Advantages:** AZ diversity.
+* **Disadvantages:** Must manage subnet CIDRs.
+
+### VPC ID
+
+* **What it is:** The VPC where the cluster resides.
+* **Why used:** Network isolation.
+* **Advantages:** Control traffic with VPC routing and security.
+
+### Security Group
+
+* **What it is:** Controls inbound/outbound access.
+* **Why used:** Acts as firewall.
+* **Advantages:** Secure.
+* **Disadvantages:** Misconfig = blocked access.
+
+## Security Features
+
+### AUTH Default User Access
+
+* **What it is:** Enables password protection for default user.
+* **Why used:** Basic Redis security.
+* **Advantages:** Prevents anonymous access.
+* **Disadvantages:** Disabled by default.
+
+### Encryption Key
+
+* **What it is:** KMS key used for encryption at rest.
+* **Why used:** Data security.
+* **Advantages:** AWS or customer managed.
+
+### User Group / Association Status
+
+* **What it is:** Controls Redis ACLs.
+* **Why used:** Role-based access control.
+* **Advantages:** Granular security.
+* **Disadvantages:** Requires config.
+
+## Connected Compute Resources
+
+### Connected Compute Resources
+
+* **What it is:** EC2 or Lambda with direct integration.
+* **Why used:** Easier auth + monitoring.
+* **Advantages:** Secure and simple.
+* **Disadvantages:** Only shows auto-linked resources.
+
+---
+
+
