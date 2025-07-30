@@ -660,4 +660,73 @@ You can restore:
 
 ---
 
+Here's a concise and clear explanation of **Tagging Backups** in Amazon ElastiCache:
+
+---
+
+## Tagging Backups in ElastiCache
+
+### What Are Tags?
+
+Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache backups.
+
+| **Example Tags**            |
+| --------------------------- |
+| `Key: environment` → `prod` |
+| `Key: owner` → `team-x`     |
+| `Key: purpose` → `billing`  |
+
+---
+
+### Why Tag Backups?
+
+* **Organize** backups by purpose, owner, or environment
+* **Filter/search** backups more easily
+* **Enable cost tracking** with **Cost Allocation Tags**
+
+> Example: You can track all `production` related backups in your AWS bill if you tag them with `environment=prod`.
+
+---
+
+### How to Manage Tags (Console)
+
+#### Add/Modify Tags:
+
+1. Open the [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
+2. Go to **Backups** from the left navigation pane
+3. Select the desired backup
+4. Choose **Manage Tags**
+5. Add or update tags as `Key = Value`
+6. Save your changes
+
+#### Remove Tags:
+
+* In the **Manage Tags** screen, choose the ❌ next to the tag
+* Save the changes
+
+---
+
+### Cost Allocation Tags
+
+* Special tags used for **billing and usage tracking**
+* Must be **activated** in the AWS Billing Console under **Cost Allocation Tags**
+* Once activated, they appear in **Cost Explorer**, allowing you to break down expenses by tag
+
+---
+
+### Also Possible Using:
+
+* **AWS CLI**
+
+  ```bash
+  aws elasticache add-tags-to-resource \
+    --resource-name arn:aws:elasticache:region:account-id:snapshot:snapshot-name \
+    --tags Key=environment,Value=dev
+  ```
+
+* **ElastiCache API**
+
+  * Use actions like `AddTagsToResource`, `ListTagsForResource`, etc.
+
+---
 
