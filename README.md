@@ -647,7 +647,7 @@ These commands help validate that the connection works and the cache is operatio
 
 | Property                   | Description                                                                                                                      |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **Node name**              | `rt-testing-corporate-redis-001`                                                                                                 |
+| **Node name**              | `<redis_cluster_name>`                                                                                                 |
 | **Status**                 | `Available` — Node is running and ready to serve requests.                                                                       |
 | **Current role**           | `primary` — This node is handling writes and read replicas sync from it.                                                         |
 | **Endpoint**               | `<redis_cluster_name>-001.<redis_cluster_name>.bp8cjs.aps1.cache.amazonaws.com:6379` — Used to connect from clients. |
