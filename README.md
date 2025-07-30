@@ -475,9 +475,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 ---
 
 ## Connectivity and Security
-
-## Connect to Your Cache
-### Overview
+### Connect to Your Cache
 
 * **What it is:** A set of methods to interact with your Redis cluster from AWS tools or external clients.
 * **Why used:** Allows developers and operators to test, debug, and operate cache instances securely.
