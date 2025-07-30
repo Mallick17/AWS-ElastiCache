@@ -470,3 +470,92 @@ ElastiCache allows you to copy **any backup** — automatic or manual. This is u
 
 ---
 
+## **Exporting ElastiCache Backup to S3** (Console)
+
+### **Pre-requirements**
+
+1. **Backup** exists in your ElastiCache dashboard (manual or automatic).
+2. **S3 Bucket** is created in the **same AWS Region** as the backup.
+3. **Permissions** are configured to allow ElastiCache to write to the S3 bucket.
+
+### **Step 1: Create an S3 Bucket**
+
+* Go to [Amazon S3 Console](https://console.aws.amazon.com/s3/)
+* Click **“Create bucket”**
+* Choose:
+
+  * **Bucket name** (DNS-compliant, e.g. `elasticache-backups-myapp`)
+  * **Region** same as your Redis backup (e.g. `ap-south-1`)
+* Click **“Create”**
+
+### **Step 2: Grant ElastiCache Access to the S3 Bucket**
+
+* In S3 Console, select your bucket → **Permissions tab**
+* Under **Access Control List (ACL)**:
+
+  * Click **Edit**
+  * Add **grantee** with this Canonical ID:
+
+    ```
+    540804c33a284a299d2547575ce1010f2312ef3da9b3a053c8bc45bf233e4353
+    ```
+  * Allow:
+
+    * **Objects**: List, Write
+    * **Bucket ACL**: Read, Write
+* Save changes
+
+### OR
+
+Use this **bucket policy** (adjust region/bucket name):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowElastiCacheExport",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ap-south-1.elasticache-snapshot.amazonaws.com"
+      },
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::elasticache-backups-myapp",
+        "arn:aws:s3:::elasticache-backups-myapp/*"
+      ]
+    }
+  ]
+}
+```
+
+### **Step 3: Export the Backup**
+
+* Go to [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
+* In the left menu → choose **Backups**
+* Select the backup you want to export
+* Click **Actions → Copy**
+* In the dialog:
+
+  * Enter a **New backup name**, e.g. `my-exported-backup`
+  * Select your **Target S3 Location** from the dropdown
+* Click **Copy**
+
+---
+
+### **Notes**
+
+* ElastiCache will append `-0001.rdb` to the filename.
+* If export fails, check these permissions are **enabled**:
+
+  * Object **Read/Write**
+  * Bucket permissions **Read**
+* Export only works for:
+
+  * Redis OSS or Valkey
+  * Not supported for **data tiering** or **self-designed Memcached clusters**
+
+---
+
+
+
