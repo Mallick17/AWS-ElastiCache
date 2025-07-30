@@ -302,6 +302,7 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+
 # Elasticache Redis Parameters
 
 ## Cluster Details
@@ -311,7 +312,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **Why used:** Distinguishes this Redis cluster from others; important for management, automation, and monitoring.
 * **Advantages:** Easy to reference; clearly identifies the purpose/environment.
 * **Disadvantages:** Must conform to AWS naming rules.
-* **Example:** `rt-testing-corporate-redis` used in scripts and monitoring tools.
+* **Example:** `<redis_cluster_name>` used in scripts and monitoring tools.
 
 ### Description
 
@@ -319,7 +320,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **Why used:** Helps provide clarity about cluster usage or environment.
 * **Advantages:** Improves documentation and operations.
 * **Disadvantages:** Not used programmatically.
-* **Example:** `rt-testing-corporate-redis-cluster` used for internal reference.
+* **Example:** `<redis_cluster_name>` used for internal reference.
 
 ### Node Type (`cache.t4g.micro`)
 
@@ -500,7 +501,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **Example Command:**
 
 ```bash
-redis6-cli --tls -h master.rt-testing-corporate-redis.bp8cjs.aps1.cache.amazonaws.com -p 6379
+redis6-cli --tls -h master.<redis_cluster_name>.bp8cjs.aps1.cache.amazonaws.com -p 6379
 ```
 
 ### Valkey GLIDE (Recommended)
@@ -511,7 +512,7 @@ redis6-cli --tls -h master.rt-testing-corporate-redis.bp8cjs.aps1.cache.amazonaw
 * **Example Usage:**
 
 ```bash
-glide-cli --tls -h master.rt-testing-corporate-redis.bp8cjs.aps1.cache.amazonaws.com -p 6379
+glide-cli --tls -h master.<redis_cluster_name>.bp8cjs.aps1.cache.amazonaws.com -p 6379
 ```
 
 ### Client Libraries
@@ -526,7 +527,7 @@ glide-cli --tls -h master.rt-testing-corporate-redis.bp8cjs.aps1.cache.amazonaws
 # Python (redis-py)
 import redis
 r = redis.StrictRedis(
-    host='master.rt-testing-corporate-redis.bp8cjs.aps1.cache.amazonaws.com',
+    host='master.<redis_cluster_name>.bp8cjs.aps1.cache.amazonaws.com',
     port=6379,
     ssl=True
 )
@@ -624,4 +625,43 @@ These commands help validate that the connection works and the cache is operatio
 
 ---
 
+## Nodes
+* **What it is:** Nodes are individual cache instances in your Redis cluster.
+* **Why used:** Redis clusters use nodes to distribute data, provide high availability, and enable failover.
+* **Advantages:** Scalable, fault-tolerant, can promote replicas to primary.
+* **Disadvantages:** Manual failover for non-replicated nodes, limited control in managed clusters.
+
+### Node Management Options
+
+* **Manage tags:** Add metadata for billing or identification.
+* **Failover primary:** Force a replica to take over if primary is failing.
+* **Promote:** Promote a replica to become a new primary manually.
+* **Reboot node:** Restart the node (e.g., for maintenance or recovery).
+* **Delete node:** Remove the node from the cluster.
+* **Add node:** Scale the cluster by adding a replica or shard.
+
+<details>
+  <summary>Click to view Examples</summary>
+
+### Example Node Detail
+
+| Property                   | Description                                                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **Node name**              | `rt-testing-corporate-redis-001`                                                                                                 |
+| **Status**                 | `Available` — Node is running and ready to serve requests.                                                                       |
+| **Current role**           | `primary` — This node is handling writes and read replicas sync from it.                                                         |
+| **Endpoint**               | `<redis_cluster_name>-001.<redis_cluster_name>.bp8cjs.aps1.cache.amazonaws.com:6379` — Used to connect from clients. |
+| **ARN**                    | `arn:aws:elasticache:ap-south-1:<account_id>:cluster:<redis_cluster_name>001` — Unique AWS identifier.                    |
+| **Parameter group status** | `In-sync` — Using the latest parameter group settings.                                                                           |
+| **Zone**                   | `ap-south-1a` — Indicates which AZ the node resides in.                                                                          |
+| **Created date**           | `December 18, 2024, 10:44:58 (UTC+05:30)` — Timestamp when the node was provisioned.                                             |
+
+### Example Use Case:
+
+* A read-heavy application can promote a replica to reduce latency.
+* Reboot can help if the node becomes unresponsive without data loss (in clustered mode).
+
+This information helps you monitor, maintain, and scale your Redis deployment efficiently.
+
+</details>
 
