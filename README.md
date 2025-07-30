@@ -667,3 +667,49 @@ This information helps you monitor, maintain, and scale your Redis deployment ef
 
 ---
 
+## Metrics
+* **What it is:** Metrics are quantitative measurements collected from your Redis nodes to monitor performance, health, and activity.
+* **Why used:** To track memory usage, CPU load, cache hit rate, connections, and latency.
+* **Advantages:** Enables proactive monitoring, automated scaling, and troubleshooting.
+* **Disadvantages:** Some metrics are delayed (every 60 seconds), limited history without CloudWatch retention customization.
+
+### Metric Selection & Comparison
+
+* **Selected nodes:** Choose individual nodes (e.g., `rt-testing-corporate-redis-001`) to view detailed metrics.
+* **Compare nodes:** Allows side-by-side comparison of performance across multiple nodes.
+
+<details>
+  <summary>Click to view the Metrics Shown and Explained</summary>
+
+### Example Metrics (Sample 16 out of 39)
+
+| Metric Name              | Description                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------- |
+| **CPUUtilization**       | Percentage of CPU used by the node. High usage may indicate processing bottlenecks. |
+| **FreeableMemory**       | Amount of unused memory available. Low value signals memory pressure.               |
+| **BytesUsedForCache**    | Total memory currently being used for cached data.                                  |
+| **CurrConnections**      | Number of client connections currently open.                                        |
+| **CacheHits**            | Number of successful key retrievals. High value indicates effective caching.        |
+| **CacheMisses**          | Number of failed retrievals. High value suggests caching inefficiency.              |
+| **Evictions**            | Count of keys evicted due to memory limits. Should be minimized.                    |
+| **ReplicationLag**       | Delay between primary and replica sync. High values could lead to stale reads.      |
+| **NetworkBytesIn/Out**   | Volume of data transferred in and out of the node.                                  |
+| **CurrItems**            | Number of items currently in the cache.                                             |
+| **SwapUsage**            | Amount of disk swap used. Should be ideally zero for in-memory databases.           |
+| **Latency**              | Time taken to respond to client requests.                                           |
+| **EngineCPUUtilization** | CPU usage specifically by the Redis engine.                                         |
+| **DatabaseMemoryUsage**  | RAM used by Redis database.                                                         |
+| **ClientConnections**    | Active connections to the cache from applications.                                  |
+| **CommandRate**          | Rate of Redis commands processed per second.                                        |
+
+### Example Use Case:
+
+* You observe high `CacheMisses` and low `CacheHits`: You might need to increase your cache size or adjust TTLs.
+* Increasing `Evictions` may indicate your working set is too large for the current node size.
+* Monitoring `ReplicationLag` is critical in read-replica environments to avoid stale data.
+
+Metrics can be visualized in CloudWatch dashboards or used with alarms and AWS Lambda automation for self-healing workflows.
+
+</details>
+
+---
