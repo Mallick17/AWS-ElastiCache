@@ -612,4 +612,52 @@ You can restore:
 
 ---
 
+## Deleting an ElastiCache Backup
+
+### Key Concepts:
+
+* **Automatic backups** are deleted **automatically** when:
+
+  * Retention period expires
+  * The cache or replication group is deleted
+* **Manual backups** are **not** deleted unless you explicitly delete them
+
+  * They persist **even after** the associated cluster is removed
+
+---
+
+### Deleting a Backup via Console
+
+#### Steps:
+
+1. Go to the [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
+2. In the **navigation pane**, click **Backups**
+3. From the backup list, check the box next to the backup you want to delete
+4. Click **Delete**
+5. On the confirmation dialog, click **Delete** again
+
+> 🔁 The status will change to **"deleting"**, and the backup will be removed shortly.
+
+---
+
+### Other Methods:
+
+* **AWS CLI:**
+
+  ```bash
+  aws elasticache delete-snapshot --snapshot-name my-backup-name
+  ```
+
+* **ElastiCache API:**
+  Use the [`DeleteSnapshot`](https://docs.aws.amazon.com/AmazonElastiCache/latest/APIReference/API_DeleteSnapshot.html) API operation
+
+---
+
+### Caution:
+
+* Deleted backups **cannot** be recovered.
+* Make sure the backup isn't required for future restores before deleting.
+
+---
+
 
