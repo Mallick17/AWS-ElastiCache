@@ -536,3 +536,50 @@ Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGr
 * Or use CLI/API to retrieve status messages
 
 ---
+
+# **Where You Can Restore a Redis/Valkey Backup in ElastiCache**
+
+### 🔹 **1. Into a New Cluster**
+
+- **Yes, supported**
+
+* You **can restore a backup into a new Redis OSS or Valkey cluster** (either serverless or self-designed).
+* This is the **recommended approach** for safety, testing, and migrations.
+
+**Use cases:**
+
+* Migration to a new node type or AZ.
+* Blue/Green deployment.
+* Data recovery.
+
+---
+
+### 🔹 **2. Into an Existing Running Cluster**
+
+- **No, not supported directly**
+
+* **You cannot restore a backup into a currently running Redis OSS or Valkey cluster** in-place.
+* ElastiCache does **not allow in-place restoration** on an active cluster.
+* Restoring wipes existing data, so AWS enforces that this must happen by **creating a new cluster** from the backup.
+
+**Alternatives:**
+
+* Create a new cluster using the backup.
+* Redirect traffic to the new cluster after validation.
+* Use Route 53, environment variables, or load balancers to update the endpoint.
+
+---
+
+### 🔹 **3. Into a Self-Managed Redis Instance (non-AWS)?**
+
+- **Yes, technically possible (manually)**
+
+* If you **download the `.rdb` file from an ElastiCache backup**, you can:
+
+  * Spin up a local or EC2-hosted Redis.
+  * Drop the `.rdb` into the data directory (`/var/lib/redis`), and
+  * Restart the Redis server to load it.
+
+⚠️ **Caveat:** Make sure the Redis version matches or is compatible with the RDB file version.
+
+---
