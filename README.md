@@ -472,6 +472,8 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **Why used:** IAM permissions and automation.
 * **Advantages:** Uniquely identifies resource.
 
+---
+
 ## Connectivity and Security
 
 ### Network Type
@@ -492,13 +494,6 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **What it is:** The VPC where the cluster resides.
 * **Why used:** Network isolation.
 * **Advantages:** Control traffic with VPC routing and security.
-
-### Security Group
-
-* **What it is:** Controls inbound/outbound access.
-* **Why used:** Acts as firewall.
-* **Advantages:** Secure.
-* **Disadvantages:** Misconfig = blocked access.
 
 ## Security Features
 
@@ -530,6 +525,14 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 * **Why used:** Easier auth + monitoring.
 * **Advantages:** Secure and simple.
 * **Disadvantages:** Only shows auto-linked resources.
+
+## Security Groups
+### Security Group
+
+* **What it is:** Controls inbound/outbound access.
+* **Why used:** Acts as firewall.
+* **Advantages:** Secure.
+* **Disadvantages:** Misconfig = blocked access.
 
 ---
 
