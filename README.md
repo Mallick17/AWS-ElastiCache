@@ -344,10 +344,6 @@ You can restore:
 
 ---
 
-Here's a concise and clear explanation of **Tagging Backups** in Amazon ElastiCache:
-
----
-
 ## Tagging Backups in ElastiCache
 
 ### What Are Tags?
