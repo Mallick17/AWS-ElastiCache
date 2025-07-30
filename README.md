@@ -302,3 +302,46 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+
+# Back Up and Restore
+## Scheduling automatic backups
+ElastiCache supports **automatic daily backups** for the following engines:
+
+* **Redis OSS and Valkey (serverless or cluster mode)**
+* **Memcached (serverless)**
+
+### Key Benefits
+
+* **Data Protection:** Helps prevent data loss by keeping daily snapshots.
+* **Quick Recovery:** In case of failure, you can restore the cache from the most recent backup.
+* **Warm Start:** The restored cache is preloaded with your data and ready for use.
+
+### How It Works
+
+* Backups are created **daily** with **no performance impact** on the live cache.
+* **Backup Window:** You can define a preferred time for backups to start. If not set, AWS assigns one.
+* **Retention Period:** Determines how many days backups are kept in Amazon S3 (up to 35 days). Setting it to `0` disables automatic backups.
+
+### Configuration Options
+
+You can enable or disable automatic backups during:
+
+* Cache creation
+* Cache modification
+
+Configuration tools include:
+
+* AWS Management Console
+* AWS CLI
+* ElastiCache API
+
+### UI Location:
+
+* **Redis/Valkey:** Under *Advanced Redis OSS Settings* or *Advanced Valkey Settings*
+* **Memcached:** Under *Advanced Memcached Settings*
+
+**Example Use Case:**
+If your app is running in production, enable automatic backups with a 7-day retention period and schedule the backup window during low-traffic hours (e.g., `23:30–00:30 UTC`) to ensure minimal operational interference.
+
+---
+
