@@ -842,4 +842,15 @@ This ensures stability, performance, and security compliance of your ElastiCache
 
 ---
 
+## Tags
 
+Tags help identify, organize, and manage AWS resources. Each tag is a key-value pair.
+
+| Key          | Value             |
+| ------------ | ----------------- |
+| `testing` | `corporate-redis` |
+
+**Example Use Case:**
+Tags can be used for cost allocation, automation, or organizing resources. For instance, you can filter resources tagged with `corporate-redis` to track environment-specific metrics or billing.
+
+---
