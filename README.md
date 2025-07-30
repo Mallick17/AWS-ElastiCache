@@ -675,7 +675,7 @@ This information helps you monitor, maintain, and scale your Redis deployment ef
 
 ### Metric Selection & Comparison
 
-* **Selected nodes:** Choose individual nodes (e.g., `rt-testing-corporate-redis-001`) to view detailed metrics.
+* **Selected nodes:** Choose individual nodes (e.g., `<redis_cluster_name>-001`) to view detailed metrics.
 * **Compare nodes:** Allows side-by-side comparison of performance across multiple nodes.
 
 <details>
