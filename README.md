@@ -430,4 +430,43 @@ A **final backup** allows you to preserve your cache data right before deleting 
 
 ---
 
+Here's a concise and clear documentation-style summary of **Describing and Copying Backups** in Amazon ElastiCache:
+
+---
+
+## Describing Backups
+
+You can list and inspect your ElastiCache backups using the AWS Management Console.
+
+#### **Steps (Console):**
+
+1. Sign in to the [ElastiCache Console](https://console.aws.amazon.com/elasticache/).
+2. From the **navigation pane**, choose **Backups**.
+3. To view details of a specific backup:
+
+   * Select the checkbox beside the backup name.
+   * The backup details will be displayed.
+
+---
+
+## Copying Backups
+
+ElastiCache allows you to copy **any backup** — automatic or manual. This is useful for:
+
+* Creating duplicates for testing or region-specific clusters
+* Preserving snapshots under different names
+* Preparing for export
+
+#### **Steps to Copy a Backup (Console):**
+
+1. Sign in to the [ElastiCache Console](https://console.aws.amazon.com/elasticache/).
+2. From the **navigation pane**, choose **Backups**.
+3. Select the checkbox beside the backup you want to copy.
+4. Choose **Actions** → **Copy**.
+5. In the **New backup name** box, enter a name for the new backup.
+6. Click **Copy**.
+
+> ✅ The backup copy will appear in the list of backups and can be used like any other snapshot.
+
+---
 
