@@ -425,3 +425,229 @@ INFO Keyspace
 Shows how many keys exist in each database.
 
 ---
+
+Here's a well-structured **Redis Backup & Restore Documentation** tailored for your use case with **ElastiCache (Redis OSS)** and **AWS CLI**, especially in a **serverless setup with fine-grained nodes**.
+
+---
+
+# 📘 Redis OSS Backup & Restore on ElastiCache – Full Guide
+
+## 📌 Overview
+
+This guide explains how to:
+
+* Connect to your ElastiCache Redis cluster
+* Run Redis CLI commands
+* Backup data (RDB snapshots) using AWS CLI
+* Restore and query Redis data
+* Use `.rdb` files with EC2 for inspection/testing
+* Best practices for serverless/fine-grained node-based environments
+
+---
+
+## 🧩 Architecture Assumptions
+
+* You are using **Amazon ElastiCache for Redis OSS**
+* Your setup is **serverless or dynamic**, and Redis nodes are **fine-grained/scaled**
+* You want to **create backups (snapshots)** and **query/restored data**
+* You have access to an **EC2 instance** in the same **VPC** as ElastiCache
+
+---
+
+## 🔐 Step 1: Connect to ElastiCache Cluster
+
+### ✅ Prerequisites
+
+* ElastiCache Redis cluster must be **in the same VPC** as the EC2 instance
+* Port **6379** must be open in the **Security Group**
+* Redis CLI installed (you can use `redis6-cli` or compile from source)
+
+### 💻 Connect from EC2 using Redis CLI
+
+```bash
+redis6-cli -h <primary-endpoint> -p 6379
+```
+
+Example:
+
+```bash
+redis6-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
+```
+
+---
+
+## 🧪 Step 2: Basic Redis Commands
+
+Once connected, test Redis functionality:
+
+```bash
+SET mykey "Hello, ElastiCache!"
+GET mykey
+PING
+INFO
+```
+
+Example:
+
+```bash
+> SET user:42:name "Alice"
+OK
+> GET user:42:name
+"Alice"
+```
+
+To explore all keys:
+
+```bash
+KEYS *
+```
+
+**Note:** Avoid `KEYS *` in production — use patterns:
+
+```bash
+KEYS user:*
+```
+
+---
+
+## 📥 Step 3: Take a Backup (Snapshot) Using AWS CLI
+
+### ✅ Prerequisites
+
+* You must have **AWS CLI** configured with permissions:
+
+  * `elasticache:CreateSnapshot`
+  * `elasticache:DescribeSnapshots`
+  * `elasticache:CopySnapshot` (optional)
+* Your cluster must be in a **running** and **available** state
+
+### 🛠️ Command to Create Snapshot
+
+```bash
+aws elasticache create-snapshot \
+  --snapshot-name my-cluster-snapshot-20250731 \
+  --replication-group-id my-redis-cluster-id
+```
+
+**Example:**
+
+```bash
+aws elasticache create-snapshot \
+  --snapshot-name redtaxi-prod-backup-20250731 \
+  --replication-group-id redtaxi-prod-cluster
+```
+
+### 📡 Verify Snapshot
+
+```bash
+aws elasticache describe-snapshots \
+  --snapshot-name redtaxi-prod-backup-20250731
+```
+
+Snapshot statuses:
+
+* `creating`
+* `available`
+* `failed`
+
+---
+
+## 📤 Step 4: Restore Backup from Snapshot
+
+### 📌 Restoring to a New Cluster
+
+```bash
+aws elasticache restore-replication-group-from-snapshot \
+  --replication-group-id restored-cluster-20250731 \
+  --snapshot-name redtaxi-prod-backup-20250731 \
+  --cache-node-type cache.t4g.small \
+  --engine redis \
+  --cache-subnet-group-name my-subnet-group
+```
+
+Replace `cache.t4g.small` with your desired node type.
+
+---
+
+## 🔎 Step 5: Query the Restored Data
+
+After the cluster is restored:
+
+1. Connect again via EC2 using:
+
+   ```bash
+   redis6-cli -h <restored-cluster-endpoint> -p 6379
+   ```
+
+2. Query known keys from the snapshot:
+
+   ```bash
+   GET user:42:name
+   HGETALL user:42
+   ```
+
+3. Check if data was restored:
+
+   ```bash
+   INFO Keyspace
+   ```
+
+---
+
+## 🧪 Optional: Load `.rdb` into a Local Redis (via EC2)
+
+If you want to inspect an RDB file manually:
+
+### 🔧 Steps
+
+1. **Install Redis** on EC2:
+
+   ```bash
+   sudo yum install redis -y
+   ```
+
+2. **Stop Redis**:
+
+   ```bash
+   sudo systemctl stop redis
+   ```
+
+3. **Copy your `.rdb`** file to:
+
+   ```bash
+   sudo mv dump.rdb /var/lib/redis/dump.rdb
+   ```
+
+4. **Restart Redis**:
+
+   ```bash
+   sudo systemctl start redis
+   ```
+
+5. **Connect** using:
+
+   ```bash
+   redis-cli
+   ```
+
+---
+
+## 🧠 Best Practices for Serverless/Fine-Grained Node Setups
+
+* Use **automated snapshot schedules** via ElastiCache to avoid manual operations
+* Store backups in **Amazon S3** by exporting snapshots
+* Enable **Encryption at Rest** and **in-transit** for production data
+* Consider using **Redis AUTH** or **RBAC** for secure access
+* For low-memory fine-tuned nodes, **monitor snapshot frequency** and **memory consumption** before snapshotting
+* Automate snapshot and restore through **CloudWatch Events + Lambda** if in a serverless architecture
+
+---
+
+## 📚 Resources
+
+* [ElastiCache Redis Snapshots Docs](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/backups-snapshots.html)
+* [AWS CLI ElastiCache Reference](https://docs.aws.amazon.com/cli/latest/reference/elasticache/index.html)
+* [Redis CLI Commands](https://redis.io/commands)
+
+---
+
