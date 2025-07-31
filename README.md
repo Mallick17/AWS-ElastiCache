@@ -64,8 +64,6 @@ TTL user:1:name
    HGETALL user:1001
    ```
 
----
-
 <details>
    <summary>Clcik to view Examples</summary>
 
