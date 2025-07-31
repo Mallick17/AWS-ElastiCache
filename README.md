@@ -303,164 +303,125 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
-# ElastiCache Redis OSS (Cluster Mode Disabled) – Backup & Query Guide
-## Prerequisites
-Ensure you have:
+# ✅ **Accessing and Querying the Restored Data**
 
-* **ElastiCache Redis** with **Cluster Mode Disabled**
-* **EC2 instance** in the **same VPC + subnet**
-* EC2 security group allows **port 6379**
-* Redis CLI installed on EC2 (`redis-cli` or `redis6-cli`)
-* AWS CLI configured with proper permissions
+Once your Redis instance (ElastiCache or other) has successfully loaded the `.rdb` file, the keys and values from that snapshot will be available in memory.
+
+You can now **connect** to the Redis cache and use standard **Redis CLI commands** to query or explore your data.
+
+For example, assuming the backup contained a key called `user:1001:name` with value `"Gyan"`:
 
 ---
 
-## 📌 PART 1: Connect to ElastiCache and Query Data
-### 🔧 Step 1: Install Redis CLI on EC2
+### 🔍 Querying Existing Keys (Step-by-step):
 
-For Amazon Linux 2023:
+1. **List keys** (if you don’t know the key names):
+
+   ```bash
+   KEYS *
+   ```
+
+   > ⚠️ Not recommended in production with large datasets. Use patterns like:
+
+   ```bash
+   KEYS user:*
+   ```
+
+2. **Check if a specific key exists**:
+
+   ```bash
+   EXISTS mykey
+   ```
+
+3. **Get the value of a known key**:
+
+   ```bash
+   GET mykey
+   ```
+
+   Example:
+
+   ```bash
+   GET user:1001:name
+   ```
+
+   Output:
+
+   ```
+   "Gyan"
+   ```
+
+4. **Get all fields from a hash** (if data was stored in hash format):
+
+   ```bash
+   HGETALL user:1001
+   ```
+
+---
+
+### 🧪 Sample: Use the Provided Example in Your Redis
+
+From the AWS guide:
 
 ```bash
-sudo dnf install redis -y
+SET mykey "Hello, ElastiCache!"
+GET mykey
 ```
 
-Manual build option:
+This means:
+
+* Key: `mykey`
+* Value: `"Hello, ElastiCache!"`
+
+---
+
+### 🛠️ Example: Working with Restored Data
+
+Let's say your restored backup had the following:
+
+| Redis Key        | Value                 |
+| ---------------- | --------------------- |
+| `session:abc123` | `{"user_id": 42}`     |
+| `user:42:name`   | `"Alice"`             |
+| `user:42:email`  | `"alice@example.com"` |
+
+You can now query like:
 
 ```bash
-curl -O http://download.redis.io/releases/redis-6.2.6.tar.gz
-tar xzvf redis-6.2.6.tar.gz && cd redis-6.2.6
-make
-sudo cp src/redis-cli /usr/local/bin/
+GET session:abc123
+GET user:42:name
+GET user:42:email
 ```
 
-### 🔗 Step 2: Get Redis Primary Endpoint (for Cluster Mode Disabled)
+Or, if stored as hash:
 
 ```bash
-aws elasticache describe-cache-clusters \
-  --cache-cluster-id <your-cache-id> \
-  --show-cache-node-info
+HGETALL user:42
+```
+
+---
+
+### 🧠 Tip: Verify RDB Load
+
+If you're unsure whether the RDB file was successfully loaded:
+
+```bash
+INFO Persistence
 ```
 
 Look for:
 
 ```
-"Endpoint": {
-  "Address": "your-primary-endpoint",
-  "Port": 6379
-}
+loading:0
+rdb_last_load_time_sec:...
 ```
 
-### 🔌 Step 3: Connect Using Redis CLI
+Also useful:
 
 ```bash
-redis-cli -h <primary-endpoint> -p 6379
+INFO Keyspace
 ```
 
-Example:
-
-```bash
-redis-cli -h redtaxi-noncluster.abc123.aps1.cache.amazonaws.com -p 6379
-```
-
-### 🧪 Step 4: Query Redis
-
-```bash
-PING
-SET user:1:name "Alice"
-GET user:1:name
-KEYS *
-INFO
-```
+Shows how many keys exist in each database.
 
 ---
-
-## 💾 PART 2: Take Backup (Snapshot) using AWS CLI
-
-ElastiCache supports **snapshots** even when **Cluster Mode is Disabled**, using the **cache cluster ID** instead of replication group ID.
-### 📥 Step 5: Create Snapshot
-
-```bash
-aws elasticache create-snapshot \
-  --snapshot-name redtaxi-backup-20250731 \
-  --cache-cluster-id redtaxi-noncluster
-```
-
-### 🔁 Step 6: Verify Snapshot Status
-
-```bash
-aws elasticache describe-snapshots \
-  --snapshot-name redtaxi-backup-20250731
-```
-
-Wait until:
-
-```
-"SnapshotStatus": "available"
-```
-
----
-
-## 🧪 PART 3: Simulate `.rdb` Backup on EC2 Redis
-Since ElastiCache doesn't allow direct `.rdb` downloads, you can simulate a Redis backup via EC2.
-
-### 🏗️ Step 7: Setup Redis Server on EC2
-
-```bash
-sudo dnf install redis -y
-sudo systemctl start redis
-```
-
----
-
-### 📦 Step 8: Simulate Data + Trigger Save
-
-```bash
-redis-cli
-SET product:101:name "Shoes"
-SET product:101:price "3999"
-SAVE
-```
-
-This creates a file at:
-
-```bash
-/var/lib/redis/dump.rdb
-```
-
-You can now copy this `.rdb` for offline or staging analysis.
-
----
-
-### ♻️ Step 9: Restore `.rdb` to Redis
-
-If needed:
-
-```bash
-sudo systemctl stop redis
-sudo cp dump.rdb /var/lib/redis/dump.rdb
-sudo chown redis:redis /var/lib/redis/dump.rdb
-sudo systemctl start redis
-```
-
-Then query:
-
-```bash
-redis-cli
-GET product:101:name
-GET product:101:price
-```
-
----
-
-## 🧠 Summary
-
-| Step          | Cluster Mode Disabled                        |
-| ------------- | -------------------------------------------- |
-| Connect       | `redis-cli -h <primary-endpoint> -p 6379`    |
-| Backup        | `create-snapshot` using `--cache-cluster-id` |
-| Restore       | Only to new cluster or simulate via EC2      |
-| Query         | Use standard Redis CLI commands              |
-| Export `.rdb` | Simulate via EC2 Redis `SAVE`                |
-
----
-
