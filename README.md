@@ -303,23 +303,8 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
-Great clarification! Here's the full and \*\*step-by-step guide for ElastiCache Redis OSS with **Cluster Mode Disabled**, covering:
-
-* Direct connection to Redis
-* Querying data
-* Taking backup using AWS CLI
-* Simulating `.rdb` backup on EC2 for offline analysis
-
----
-
-# 📘 ElastiCache Redis OSS (Cluster Mode Disabled) – Backup & Query Guide
-
-This guide is tailored for **Redis OSS (Cluster Mode Disabled)** on Amazon ElastiCache.
-
----
-
-## ✅ Prerequisites
-
+# ElastiCache Redis OSS (Cluster Mode Disabled) – Backup & Query Guide
+## Prerequisites
 Ensure you have:
 
 * **ElastiCache Redis** with **Cluster Mode Disabled**
@@ -331,9 +316,6 @@ Ensure you have:
 ---
 
 ## 📌 PART 1: Connect to ElastiCache and Query Data
-
----
-
 ### 🔧 Step 1: Install Redis CLI on EC2
 
 For Amazon Linux 2023:
@@ -350,8 +332,6 @@ tar xzvf redis-6.2.6.tar.gz && cd redis-6.2.6
 make
 sudo cp src/redis-cli /usr/local/bin/
 ```
-
----
 
 ### 🔗 Step 2: Get Redis Primary Endpoint (for Cluster Mode Disabled)
 
@@ -370,8 +350,6 @@ Look for:
 }
 ```
 
----
-
 ### 🔌 Step 3: Connect Using Redis CLI
 
 ```bash
@@ -383,8 +361,6 @@ Example:
 ```bash
 redis-cli -h redtaxi-noncluster.abc123.aps1.cache.amazonaws.com -p 6379
 ```
-
----
 
 ### 🧪 Step 4: Query Redis
 
@@ -401,9 +377,6 @@ INFO
 ## 💾 PART 2: Take Backup (Snapshot) using AWS CLI
 
 ElastiCache supports **snapshots** even when **Cluster Mode is Disabled**, using the **cache cluster ID** instead of replication group ID.
-
----
-
 ### 📥 Step 5: Create Snapshot
 
 ```bash
@@ -411,8 +384,6 @@ aws elasticache create-snapshot \
   --snapshot-name redtaxi-backup-20250731 \
   --cache-cluster-id redtaxi-noncluster
 ```
-
----
 
 ### 🔁 Step 6: Verify Snapshot Status
 
@@ -430,10 +401,7 @@ Wait until:
 ---
 
 ## 🧪 PART 3: Simulate `.rdb` Backup on EC2 Redis
-
 Since ElastiCache doesn't allow direct `.rdb` downloads, you can simulate a Redis backup via EC2.
-
----
 
 ### 🏗️ Step 7: Setup Redis Server on EC2
 
