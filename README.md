@@ -1,6 +1,7 @@
 # **Accessing and Querying the Restored Data**
 
 > Note: Without these steps we cant query the cache data
+
 > 1: **_[Set up a compute connection to automatically configure connectivity between your EC2 instance and cache, both of which must reside in the same VPC.](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/compute-connection.html)_**
 
 > 2: **_[Install the Redis OSS CLI  on your EC2 instance](https://redis.io/docs/latest/operate/rs/references/cli-utilities/redis-cli/)_**
