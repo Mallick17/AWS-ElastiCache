@@ -121,6 +121,141 @@ Shows how many keys exist in each database.
 
 ---
 
+## Working with Keys in Redis OSS (ElastiCache)
+
+### Overview
+
+Redis uses key-value data structures. Each key maps to a value that can be a string, list, set, hash, etc. In ElastiCache Redis (Cluster Mode Disabled), all keys are stored in a **single logical database** and can be queried, created, and managed using `redis-cli` or any Redis client.
+
+---
+
+## Querying Existing Keys
+
+### 1. **List All Keys** (Not recommended in production with many keys)
+
+```bash
+KEYS *
+```
+
+### 2. **Find Keys by Pattern**
+
+```bash
+KEYS user:*
+KEYS session:*
+```
+
+### 3. **Check if Key Exists**
+
+```bash
+EXISTS user:1:name
+```
+
+### 4. **Get Value of a Key**
+
+```bash
+GET user:1:name
+```
+
+### 5. **Check TTL (Time to Live)**
+
+```bash
+TTL user:1:name
+```
+
+---
+
+## Creating and Storing New Keys
+
+### 1. **Simple String Key**
+
+```bash
+SET user:1:name "Alice"
+```
+
+### 2. **Add Expiry to a Key**
+
+```bash
+SETEX otp:123456 300 "abc789"  # expires in 300 seconds
+```
+
+### 3. **Hash (similar to objects/dictionaries)**
+
+```bash
+HMSET user:1 name "Alice" email "alice@example.com"
+HGETALL user:1
+```
+
+### 4. **List**
+
+```bash
+LPUSH tasks "task1"
+LPUSH tasks "task2"
+LRANGE tasks 0 -1
+```
+
+---
+
+## Accessing Stored Keys
+
+### 1. **Access String Value**
+
+```bash
+GET user:1:name
+```
+
+### 2. **Access Hash Field**
+
+```bash
+HGET user:1 email
+HGETALL user:1
+```
+
+### 3. **Access List Items**
+
+```bash
+LRANGE tasks 0 -1
+```
+
+### 4. **Access Expiring Key**
+
+If you try to access a key after it expires:
+
+```bash
+GET otp:123456
+# (nil)
+```
+
+---
+
+## Useful Commands for Managing Keys
+
+| Command              | Description                              |
+| -------------------- | ---------------------------------------- |
+| `DEL key`            | Delete a key                             |
+| `EXPIRE key seconds` | Set expiration                           |
+| `TTL key`            | Show time to live                        |
+| `PERSIST key`        | Remove expiration                        |
+| `TYPE key`           | Show key type (string, list, hash, etc.) |
+
+---
+
+## Best Practices for Keys
+
+* Use **namespaces** with colons: `user:123:name`, `session:abc123`
+* Avoid `KEYS *` in production — use **SCAN** instead:
+
+  ```bash
+  SCAN 0 MATCH user:* COUNT 10
+  ```
+* Set **expiration** for temporary keys like OTPs or sessions
+* Monitor memory usage with:
+
+  ```bash
+  INFO memory
+  ```
+
+---
+
 # Redis OSS Backup & Restore on ElastiCache – Full Guide
 
 ## Overview
