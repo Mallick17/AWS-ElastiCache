@@ -1,8 +1,10 @@
 # **Accessing and Querying the Restored Data**
+
 > Note: Without these steps we cant query the cache data
 > 1: **_[Set up a compute connection to automatically configure connectivity between your EC2 instance and cache, both of which must reside in the same VPC.](https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/compute-connection.html)_**
 > 2: **_[Install the Redis OSS CLI  on your EC2 instance](https://redis.io/docs/latest/operate/rs/references/cli-utilities/redis-cli/)_**
 > 3: **_Connect to your Redis OSS cache using the following command which is shown in the console_**
+
 ## Working with Keys in Redis OSS (ElastiCache)
 Redis uses key-value data structures. Each key maps to a value that can be a string, list, set, hash, etc. In ElastiCache Redis (Cluster Mode Disabled), all keys are stored in a **single logical database** and can be queried, created, and managed using `redis-cli` or any Redis client.
 - Once your Redis instance (ElastiCache or other) has successfully loaded the `.rdb` file, the keys and values from that snapshot will be available in memory.
