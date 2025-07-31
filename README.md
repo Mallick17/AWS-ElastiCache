@@ -1,4 +1,6 @@
 # **Accessing and Querying the Restored Data**
+## Working with Keys in Redis OSS (ElastiCache)
+Redis uses key-value data structures. Each key maps to a value that can be a string, list, set, hash, etc. In ElastiCache Redis (Cluster Mode Disabled), all keys are stored in a **single logical database** and can be queried, created, and managed using `redis-cli` or any Redis client.
 
 Once your Redis instance (ElastiCache or other) has successfully loaded the `.rdb` file, the keys and values from that snapshot will be available in memory.
 
@@ -8,27 +10,31 @@ For example, assuming the backup contained a key called `user:1001:name` with va
 
 ---
 
-### Querying Existing Keys (Step-by-step):
+## Querying Existing Keys (Step-by-step):
+### 1. **List All Keys** (Not recommended in production with many keys)
 
-1. **List keys** (if you don’t know the key names):
+```bash
+KEYS *
+```
 
-   ```bash
-   KEYS *
-   ```
+### 2. **Find Keys by Pattern**
 
-   > ⚠️ Not recommended in production with large datasets. Use patterns like:
+```bash
+KEYS user:*
+KEYS session:*
+```
 
-   ```bash
-   KEYS user:*
-   ```
+### 3. **Check if Key Exists**
 
-2. **Check if a specific key exists**:
+```bash
+EXISTS user:1:name
+```
+### 4. **Get Value of a Key**
+**Get the value of a known key**:
 
-   ```bash
-   EXISTS mykey
-   ```
-
-3. **Get the value of a known key**:
+```bash
+GET user:1:name
+```
 
    ```bash
    GET mykey
@@ -46,13 +52,22 @@ For example, assuming the backup contained a key called `user:1001:name` with va
    "Gyan"
    ```
 
-4. **Get all fields from a hash** (if data was stored in hash format):
+### 5. **Check TTL (Time to Live)**
+
+```bash
+TTL user:1:name
+```
+
+### 6. **Get all fields from a hash** (if data was stored in hash format):
 
    ```bash
    HGETALL user:1001
    ```
 
 ---
+
+<details>
+   <summary>Clcik to view Examples</summary>
 
 ### Sample: Use the Provided Example in Your Redis
 
@@ -94,6 +109,8 @@ Or, if stored as hash:
 HGETALL user:42
 ```
 
+</details>
+
 ---
 
 ### Tip: Verify RDB Load
@@ -118,49 +135,6 @@ INFO Keyspace
 ```
 
 Shows how many keys exist in each database.
-
----
-
-## Working with Keys in Redis OSS (ElastiCache)
-
-### Overview
-
-Redis uses key-value data structures. Each key maps to a value that can be a string, list, set, hash, etc. In ElastiCache Redis (Cluster Mode Disabled), all keys are stored in a **single logical database** and can be queried, created, and managed using `redis-cli` or any Redis client.
-
----
-
-## Querying Existing Keys
-
-### 1. **List All Keys** (Not recommended in production with many keys)
-
-```bash
-KEYS *
-```
-
-### 2. **Find Keys by Pattern**
-
-```bash
-KEYS user:*
-KEYS session:*
-```
-
-### 3. **Check if Key Exists**
-
-```bash
-EXISTS user:1:name
-```
-
-### 4. **Get Value of a Key**
-
-```bash
-GET user:1:name
-```
-
-### 5. **Check TTL (Time to Live)**
-
-```bash
-TTL user:1:name
-```
 
 ---
 
