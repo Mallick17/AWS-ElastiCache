@@ -303,7 +303,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
-# ✅ **Accessing and Querying the Restored Data**
+# **Accessing and Querying the Restored Data**
 
 Once your Redis instance (ElastiCache or other) has successfully loaded the `.rdb` file, the keys and values from that snapshot will be available in memory.
 
@@ -313,7 +313,7 @@ For example, assuming the backup contained a key called `user:1001:name` with va
 
 ---
 
-### 🔍 Querying Existing Keys (Step-by-step):
+### Querying Existing Keys (Step-by-step):
 
 1. **List keys** (if you don’t know the key names):
 
@@ -359,7 +359,7 @@ For example, assuming the backup contained a key called `user:1001:name` with va
 
 ---
 
-### 🧪 Sample: Use the Provided Example in Your Redis
+### Sample: Use the Provided Example in Your Redis
 
 From the AWS guide:
 
@@ -375,7 +375,7 @@ This means:
 
 ---
 
-### 🛠️ Example: Working with Restored Data
+### Example: Working with Restored Data
 
 Let's say your restored backup had the following:
 
@@ -401,7 +401,7 @@ HGETALL user:42
 
 ---
 
-### 🧠 Tip: Verify RDB Load
+### Tip: Verify RDB Load
 
 If you're unsure whether the RDB file was successfully loaded:
 
@@ -426,13 +426,9 @@ Shows how many keys exist in each database.
 
 ---
 
-Here's a well-structured **Redis Backup & Restore Documentation** tailored for your use case with **ElastiCache (Redis OSS)** and **AWS CLI**, especially in a **serverless setup with fine-grained nodes**.
+# Redis OSS Backup & Restore on ElastiCache – Full Guide
 
----
-
-# 📘 Redis OSS Backup & Restore on ElastiCache – Full Guide
-
-## 📌 Overview
+## Overview
 
 This guide explains how to:
 
@@ -445,7 +441,7 @@ This guide explains how to:
 
 ---
 
-## 🧩 Architecture Assumptions
+## Architecture Assumptions
 
 * You are using **Amazon ElastiCache for Redis OSS**
 * Your setup is **serverless or dynamic**, and Redis nodes are **fine-grained/scaled**
@@ -454,9 +450,9 @@ This guide explains how to:
 
 ---
 
-## 🔐 Step 1: Connect to ElastiCache Cluster
+## Step 1: Connect to ElastiCache Cluster
 
-### ✅ Prerequisites
+### Prerequisites
 
 * ElastiCache Redis cluster must be **in the same VPC** as the EC2 instance
 * Port **6379** must be open in the **Security Group**
@@ -476,7 +472,7 @@ redis6-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
 
 ---
 
-## 🧪 Step 2: Basic Redis Commands
+## Step 2: Basic Redis Commands
 
 Once connected, test Redis functionality:
 
@@ -510,9 +506,9 @@ KEYS user:*
 
 ---
 
-## 📥 Step 3: Take a Backup (Snapshot) Using AWS CLI
+## Step 3: Take a Backup (Snapshot) Using AWS CLI
 
-### ✅ Prerequisites
+### Prerequisites
 
 * You must have **AWS CLI** configured with permissions:
 
@@ -521,7 +517,7 @@ KEYS user:*
   * `elasticache:CopySnapshot` (optional)
 * Your cluster must be in a **running** and **available** state
 
-### 🛠️ Command to Create Snapshot
+### Command to Create Snapshot
 
 ```bash
 aws elasticache create-snapshot \
@@ -537,7 +533,7 @@ aws elasticache create-snapshot \
   --replication-group-id redtaxi-prod-cluster
 ```
 
-### 📡 Verify Snapshot
+### Verify Snapshot
 
 ```bash
 aws elasticache describe-snapshots \
@@ -552,9 +548,9 @@ Snapshot statuses:
 
 ---
 
-## 📤 Step 4: Restore Backup from Snapshot
+## Step 4: Restore Backup from Snapshot
 
-### 📌 Restoring to a New Cluster
+### Restoring to a New Cluster
 
 ```bash
 aws elasticache restore-replication-group-from-snapshot \
@@ -569,7 +565,7 @@ Replace `cache.t4g.small` with your desired node type.
 
 ---
 
-## 🔎 Step 5: Query the Restored Data
+## Step 5: Query the Restored Data
 
 After the cluster is restored:
 
@@ -594,7 +590,7 @@ After the cluster is restored:
 
 ---
 
-## 🧪 Optional: Load `.rdb` into a Local Redis (via EC2)
+## Optional: Load `.rdb` into a Local Redis (via EC2)
 
 If you want to inspect an RDB file manually:
 
@@ -632,7 +628,7 @@ If you want to inspect an RDB file manually:
 
 ---
 
-## 🧠 Best Practices for Serverless/Fine-Grained Node Setups
+## Best Practices for Serverless/Fine-Grained Node Setups
 
 * Use **automated snapshot schedules** via ElastiCache to avoid manual operations
 * Store backups in **Amazon S3** by exporting snapshots
@@ -643,7 +639,7 @@ If you want to inspect an RDB file manually:
 
 ---
 
-## 📚 Resources
+## Resources
 
 * [ElastiCache Redis Snapshots Docs](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/backups-snapshots.html)
 * [AWS CLI ElastiCache Reference](https://docs.aws.amazon.com/cli/latest/reference/elasticache/index.html)
