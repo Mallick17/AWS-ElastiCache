@@ -215,3 +215,252 @@ rm sync_redis_keys.py
 | 6    | Verified keys were successfully copied                 |
 
 ---
+
+Here is a **clean and organized documentation** for restoring Redis keys from a local `dump.rdb` to an **ElastiCache Redis** cluster, including **full, partial, and single-key restoration workflows**:
+
+---
+
+# 🔄 Restore Redis Keys from Local `dump.rdb` to AWS ElastiCache
+
+## ⚠️ Why `dump.rdb` Cannot Be Directly Restored to ElastiCache
+
+ElastiCache Redis is a **managed service** and does **not support direct file access** like a self-hosted Redis server.
+
+> ❌ You cannot upload `dump.rdb` directly to ElastiCache.
+
+---
+
+## ✅ Solution: Use Key-Level Sync via Scripts
+
+Instead of direct file-level operations, you must:
+
+* Load the `dump.rdb` into a **local Redis instance**
+* Use **scripts (e.g., Python)** to read keys from the local Redis and write them to ElastiCache
+
+---
+
+## 🧭 Full Restore: All Keys from Local to ElastiCache
+
+### 🔁 Step 1: Load `dump.rdb` into Local Redis
+
+```bash
+# Stop running Redis
+sudo systemctl stop redis
+
+# Replace dump file
+sudo cp /path/to/your/dump.rdb /var/lib/redis/dump.rdb
+sudo chown redis:redis /var/lib/redis/dump.rdb
+
+# Restart Redis
+sudo systemctl start redis
+```
+
+This will load all keys from the `dump.rdb` into your local Redis server.
+
+---
+
+### 🧠 Step 2: Sync All Keys to ElastiCache via Python
+
+#### Install the Redis client
+
+```bash
+pip3 install redis
+```
+
+#### Python script: `push_to_elasticache.py`
+
+```python
+import redis
+
+# Connect to local Redis (where dump.rdb was loaded)
+source = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+
+# Connect to ElastiCache
+destination = redis.StrictRedis(
+    host='<name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+# Copy all keys
+for key in source.keys('*'):
+    key_type = source.type(key)
+
+    if key_type == 'string':
+        destination.set(key, source.get(key))
+    elif key_type == 'list':
+        destination.delete(key)
+        destination.rpush(key, *source.lrange(key, 0, -1))
+    elif key_type == 'set':
+        destination.delete(key)
+        destination.sadd(key, *source.smembers(key))
+    elif key_type == 'zset':
+        destination.delete(key)
+        members = source.zrange(key, 0, -1, withscores=True)
+        destination.zadd(key, dict(members))
+    elif key_type == 'hash':
+        destination.delete(key)
+        destination.hset(key, mapping=source.hgetall(key))
+    else:
+        print(f"❌ Skipping unsupported type {key_type} for key: {key}")
+
+print("✅ Restore from local Redis to ElastiCache complete.")
+```
+
+#### Run the script:
+
+```bash
+python3 push_to_elasticache.py
+```
+
+---
+
+### ✅ Verify Keys in ElastiCache
+
+```bash
+redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
+> keys *
+```
+
+---
+
+## 🗑️ Delete and Restore a Specific Key
+
+### Step 1: Delete the Key in ElastiCache
+
+```bash
+redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 DEL "your_key_name"
+```
+
+> 💡 Use `\` to escape spaces or wrap in quotes:
+
+```bash
+DEL "rate_limit_summary_user:2025-07-31 17:03"
+```
+
+---
+
+### Step 2: Restore One Key via Python
+
+#### Minimal restore script: `restore_single_key.py`
+
+```python
+import redis
+
+KEY_TO_RESTORE = 'rate_limit_summary_user:2025-07-31 17:03'
+
+source = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+destination = redis.StrictRedis(
+    host='<name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+key_type = source.type(KEY_TO_RESTORE)
+
+if key_type == 'string':
+    destination.set(KEY_TO_RESTORE, source.get(KEY_TO_RESTORE))
+elif key_type == 'list':
+    destination.delete(KEY_TO_RESTORE)
+    destination.rpush(KEY_TO_RESTORE, *source.lrange(KEY_TO_RESTORE, 0, -1))
+elif key_type == 'set':
+    destination.delete(KEY_TO_RESTORE)
+    destination.sadd(KEY_TO_RESTORE, *source.smembers(KEY_TO_RESTORE))
+elif key_type == 'zset':
+    destination.delete(KEY_TO_RESTORE)
+    members = source.zrange(KEY_TO_RESTORE, 0, -1, withscores=True)
+    destination.zadd(KEY_TO_RESTORE, dict(members))
+elif key_type == 'hash':
+    destination.delete(KEY_TO_RESTORE)
+    destination.hset(KEY_TO_RESTORE, mapping=source.hgetall(KEY_TO_RESTORE))
+else:
+    print(f"❌ Unsupported key type: {key_type}")
+
+print(f"✅ Key restored to ElastiCache: {KEY_TO_RESTORE}")
+```
+
+---
+
+### Step 3: Verify the Key in ElastiCache
+
+```bash
+# For strings
+redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 GET "your_key_name"
+
+# For hashes
+redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 HGETALL "your_key_name"
+```
+
+---
+
+## 🔁 Backup One Specific Key from ElastiCache to Local Redis
+
+### Step 1: Copy Key from ElastiCache → Local Redis
+
+Create script `copy_key_to_local.py`:
+
+```python
+import redis
+
+KEY = 'your_key_name_here'
+
+source = redis.StrictRedis(
+    host='<name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+destination = redis.StrictRedis(host='localhost', port=6379, decode_responses=True)
+
+key_type = source.type(KEY)
+
+if key_type == 'none':
+    print(f"❌ Key not found: {KEY}")
+elif key_type == 'string':
+    destination.set(KEY, source.get(KEY))
+elif key_type == 'list':
+    destination.delete(KEY)
+    destination.rpush(KEY, *source.lrange(KEY, 0, -1))
+elif key_type == 'set':
+    destination.delete(KEY)
+    destination.sadd(KEY, *source.smembers(KEY))
+elif key_type == 'zset':
+    destination.delete(KEY)
+    z_members = source.zrange(KEY, 0, -1, withscores=True)
+    destination.zadd(KEY, dict(z_members))
+elif key_type == 'hash':
+    destination.delete(KEY)
+    destination.hset(KEY, mapping=source.hgetall(KEY))
+else:
+    print(f"❌ Unsupported key type: {key_type}")
+
+print(f"✅ Key '{KEY}' copied to local Redis.")
+```
+
+### Step 2: Save `dump.rdb` from Local Redis
+
+```bash
+redis-cli SAVE
+```
+
+This will save the updated key to `/var/lib/redis/dump.rdb`.
+
+---
+
+## ⚠️ Important Notes
+
+* ElastiCache **does NOT support** commands like:
+
+  * `SAVE`, `RESTORE`, `BGSAVE`, `SYNC`, or loading from `dump.rdb`
+* You **must** use **key-level logic** to migrate or restore keys.
+* Scripts like the ones shown are the **only reliable way** to move data between Redis clusters.
+
+---
+
+## 📦 Optional Enhancements
+
+* ✅ Support for TTLs (expire times)
+* ✅ Logging or dry-run mode
+* ✅ Filtering by key pattern (e.g., only `prefix:*`)
+
+
