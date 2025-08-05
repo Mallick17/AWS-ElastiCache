@@ -302,3 +302,167 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+
+# Using PHP ARTISAN TINKER
+## 🧾 Documentation: Backing up a Redis Key from Laravel Inside a Docker Container
+
+### Objective
+
+To **export a specific Redis key** (`cabs.8825.live_details`) from a Laravel application running in a Docker container, save its contents as a `.json` file, and **copy that file to the local machine**.
+
+---
+
+## Why This Approach?
+
+| Step                        | Why                                                                            |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| Using `php artisan tinker`  | It provides an interactive shell to access Laravel classes and Redis bindings. |
+| Using JSON format           | JSON is a universal format that's portable, readable, and easy to restore.     |
+| Using `file_put_contents()` | This saves the data directly to the Laravel container's filesystem.            |
+| Using `docker cp`           | This command copies the file from the container to your local system.          |
+
+---
+
+## Step-by-Step Guide
+
+---
+
+### **Step 1: Enter Laravel Tinker inside the Docker container**
+
+Use Laravel’s interactive shell to interact with Redis.
+
+```bash
+php artisan tinker
+```
+
+---
+
+### **Step 2: Load the Redis Wrapper Class**
+
+```php
+use App\Packages\Cache\ElastiCache;
+```
+
+> This loads your custom Redis wrapper class that simplifies Redis operations (like `getAll()`).
+
+---
+
+### **Step 3: Initialize the Redis connection**
+
+```php
+$elastiCache = new ElastiCache();
+```
+
+> Creates an instance that allows you to read/write to Redis via Laravel.
+
+---
+
+### **Step 4: Define the cab ID and Redis key**
+
+```php
+$cabId = 8825;
+$key = 'cabs.' . $cabId . '.live_details';
+```
+
+> Constructs the exact Redis key you want to back up.
+
+---
+
+### **Step 5: Fetch the data from Redis**
+
+```php
+$data = $elastiCache->getAll($key);
+```
+
+> This retrieves the Redis hash (associative array) stored under the key.
+
+---
+
+### **Step 6: Convert data to JSON format**
+
+```php
+$json = json_encode($data, JSON_PRETTY_PRINT);
+```
+
+> Converts the PHP array into a human-readable `.json` format.
+
+---
+
+### **Step 7: Save the JSON file inside the container**
+
+```php
+file_put_contents('/var/www/html/storage/app/cabs_8825_live_details.json', $json);
+```
+
+> This saves the JSON string into a file in the Laravel `storage/app/` directory.
+
+You’ll get an output like:
+
+```php
+=> 1111
+```
+
+> Which means `1111` bytes were written to the file.
+
+---
+
+### **Step 8: Exit tinker**
+
+```php
+q
+```
+
+> Or just use `exit`.
+
+---
+
+### **Step 9: Copy the file from the Docker container to your local system**
+
+Assuming your container ID is `467a2ae897cf`:
+
+```bash
+docker cp 467a2ae897cf:/var/www/html/storage/app/cabs_8825_live_details.json .
+```
+
+> This copies the file to the current local directory (`.`).
+
+---
+
+## 📁 Final Output
+
+You will now have a file on your local system named:
+
+```
+cabs_8825_live_details.json
+```
+
+Containing the backed-up Redis data in JSON format.
+
+---
+
+## Optional: Restore Backup
+
+To restore the data later:
+
+```php
+$json = file_get_contents('/var/www/html/storage/app/cabs_8825_live_details.json');
+$data = json_decode($json, true);
+$elastiCache->setAll('cabs.8825.live_details', $data);
+```
+
+> This will push the backed-up data back to Redis under the same key.
+
+---
+
+## Summary
+
+| Task                 | Tool                         |
+| -------------------- | ---------------------------- |
+| Redis interaction    | Laravel `php artisan tinker` |
+| Serialization format | JSON                         |
+| File creation        | `file_put_contents()`        |
+| File transfer        | `docker cp`                  |
+
+---
+
+
