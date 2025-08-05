@@ -1,7 +1,3 @@
-Here’s a clean and well-structured documentation of your Redis installation, data handling, and key synchronization process. The commands and flow have been preserved closely, while unnecessary noise (like typos, retries, redundant steps) has been removed for clarity.
-
----
-
 # 📘 Redis Installation, Setup, Key Insert & Backup, and Key Sync (Local ↔ ElastiCache)
 
 ## 📦 1. Install Redis on Amazon Linux (with build from source)
