@@ -133,6 +133,272 @@ cabs_8825_live_details.json
 
 Containing the backed-up Redis data in JSON format.
 
+
+<details>
+ <summary>Click to view Mallow Technology Method</summary>
+
+<details>
+ <summary>Error Faced and the difference in error</summary>
+
+
+The error you're seeing:
+
+```
+PHP Error: Call to undefined method App\Packages\Cache\ElastiCache::keys()
+```
+
+means that the `ElastiCache` class does **not** have a `keys()` method defined. You're likely trying to use a method similar to the Redis `KEYS` command, but through your application's `ElastiCache` wrapper.
+
+### What’s going wrong?
+
+You're using:
+
+```php
+$keys = ElastiCache::keys('*');
+```
+
+But the method `keys()` doesn’t exist on your `ElastiCache` class.
+
+---
+
+### How to fix this?
+
+#### ✅ Step 1: Check your ElastiCache wrapper
+
+If `App\Packages\Cache\ElastiCache` is a wrapper around Redis, then you need to access the underlying Redis client (like Predis or PhpRedis) to call `keys()`.
+
+Example (if it wraps Laravel’s cache or Redis facade):
+
+```php
+$keys = ElastiCache::getClient()->keys('*');
+```
+
+But this depends entirely on how `ElastiCache` is implemented.
+
+---
+
+#### ✅ Step 2: If you're using Laravel
+
+If your `ElastiCache` is using Laravel’s Redis, you can directly use:
+
+```php
+$keys = Redis::keys('*');
+```
+
+Make sure you have `use Illuminate\Support\Facades\Redis;` at the top.
+
+Or, if you're using a Redis connection instance:
+
+```php
+$keys = app('redis')->keys('*');
+```
+
+---
+
+### ⚠️ Warning about `KEYS *`
+
+Using `keys('*')` in production is dangerous for performance, especially on large datasets. Consider using `SCAN` for safer iteration:
+
+```php
+$cursor = null;
+$keys = [];
+
+do {
+    [$cursor, $results] = Redis::scan($cursor, ['MATCH' => '*', 'COUNT' => 100]);
+    $keys = array_merge($keys, $results);
+} while ($cursor !== 0);
+```
+
+---
+
+### ✅ Summary
+
+* Your error means `keys()` is not defined in `ElastiCache`.
+* Try accessing the Redis client via a method like `getClient()` or similar.
+* Alternatively, use Laravel's `Redis::keys('*')`.
+* Avoid using `KEYS` in production — prefer `SCAN`.
+* `keys()` method (Redis command wrapper), or
+* `getClient()` method (to expose the underlying Redis instance).
+
+---
+
+## ✅ What You Should Do Next
+
+### 🔎 Step 1: Inspect the `ElastiCache` class
+
+Open the file:
+
+```bash
+app/Packages/Cache/ElastiCache.php
+```
+
+And check:
+
+* Does it internally use `Redis::`?
+* Does it expose any raw access to the Redis client?
+* Which public methods does it expose?
+
+Look for anything like:
+
+```php
+use Illuminate\Support\Facades\Redis;
+
+class ElastiCache {
+    public function get($key) {
+        return Redis::get($key);
+    }
+
+    public function hgetall($key) {
+        return Redis::hgetall($key);
+    }
+
+    // Do you see something like this?
+    public function keys($pattern) {
+        return Redis::keys($pattern);
+    }
+
+    // or
+    public function getClient() {
+        return Redis::connection();
+    }
+}
+```
+
+---
+
+## 🛠️ Option 1: Add a `keys()` method
+
+If it's your custom class, add the following to `ElastiCache.php`:
+
+```php
+public function keys(string $pattern = '*') {
+    return \Illuminate\Support\Facades\Redis::keys($pattern);
+}
+```
+
+You can now do in `tinker`:
+
+```php
+use App\Packages\Cache\ElastiCache;
+$elastiCache = new ElastiCache();
+$keys = $elastiCache->keys('*');
+```
+
+---
+
+## 🛠️ Option 2: Use Redis directly for keys
+
+Since this is just for backup, **you can mix in** the Laravel Redis facade directly:
+
+```php
+use App\Packages\Cache\ElastiCache;
+use Illuminate\Support\Facades\Redis;
+
+$elastiCache = new ElastiCache();
+$keys = Redis::keys('*');  // this works even if ElastiCache doesn’t expose keys()
+
+$allData = [];
+
+foreach ($keys as $key) {
+    $type = Redis::type($key);
+    if ($type === 'hash') {
+        $allData[$key] = $elastiCache->hgetall($key); // still use wrapper
+    } else {
+        $allData[$key] = $elastiCache->get($key);
+    }
+}
+
+file_put_contents(storage_path('app/redis_backup.json'), json_encode($allData, JSON_PRETTY_PRINT));
+```
+
+---
+
+## ✅ Summary
+
+| What you want to do       | Recommendation                                |
+| ------------------------- | --------------------------------------------- |
+| List all Redis keys       | Use `Redis::keys('*')` directly               |
+| Use only ElastiCache      | Add a `keys()` method inside the class        |
+| Wrap into a command later | Use this logic inside a `php artisan` command |
+
+
+```bash
+php artisan redis:backup
+```
+
+</details>
+
+Yes — if you **cannot modify the `ElastiCache` class**, you can **access the underlying Redis connection directly using Laravel's Redis facade** and bypass the wrapper.
+
+---
+
+### ✅ Workaround Using Laravel's Redis Facade
+
+Run this in `php artisan tinker` or your custom command:
+
+```php
+use Illuminate\Support\Facades\Redis;
+
+// Get all keys
+$keys = Redis::connection('custom')->keys('*');
+
+$allData = [];
+
+foreach ($keys as $key) {
+    $type = Redis::connection('custom')->type($key);
+
+    switch ($type) {
+        case 'hash':
+            $allData[$key] = Redis::connection('custom')->hgetall($key);
+            break;
+        case 'string':
+            $allData[$key] = Redis::connection('custom')->get($key);
+            break;
+        case 'zset':
+            $allData[$key] = Redis::connection('custom')->zrangebyscore($key, '-inf', '+inf');
+            break;
+        case 'list':
+            $allData[$key] = Redis::connection('custom')->lrange($key, 0, -1);
+            break;
+        case 'set':
+            $allData[$key] = Redis::connection('custom')->smembers($key);
+            break;
+        default:
+            $allData[$key] = "Unsupported type: $type";
+    }
+}
+
+file_put_contents(storage_path('app/redis_backup.json'), json_encode($allData, JSON_PRETTY_PRINT));
+```
+
+---
+
+### 🧠 Notes
+
+* This uses Laravel’s Redis Facade (`Illuminate\Support\Facades\Redis`) and the `'custom'` connection — adjust if needed.
+* `keys('*')` works for smaller datasets. For production, prefer `scan()` to avoid blocking Redis.
+
+---
+
+### ✅ To Restore a Particular Key
+
+Once you’ve verified the key is missing (you already checked earlier using `Redis::exists()`), restore like this:
+
+```php
+$backup = json_decode(file_get_contents(storage_path('app/redis_backup.json')), true);
+
+$key = 'cabs.8825.live_details';
+
+if (isset($backup[$key])) {
+    Redis::connection('custom')->hmset($key, $backup[$key]);
+}
+```
+
+---
+
+ 
+</details>
+
 ---
 
 ## Redis Key Deletion via Laravel Tinker
