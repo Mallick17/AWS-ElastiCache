@@ -135,15 +135,112 @@ Containing the backed-up Redis data in JSON format.
 
 ---
 
-## Optional: Restore Backup
+# 📘 Redis Key Restoration via Laravel Tinker
+## Use Case
 
-To restore the data later:
+Restore the Redis key:
+**`cabs.8825.live_details`**
+from the backup file:
+**`/var/www/html/storage/app/cabs_8825_live_details.json`**
+
+---
+
+## Prerequisites
+
+* Laravel application running inside the Docker container.
+* Redis is configured and accessible via `Illuminate\Support\Facades\Redis`.
+* JSON backup exists at the expected path.
+* PHP and Laravel Artisan installed inside the container.
+
+---
+
+## Step 1: Check if the Redis Key Exists
+
+### Command:
+
+```bash
+php artisan tinker
+```
+
+### In Tinker:
+
+```php
+use Illuminate\Support\Facades\Redis;
+
+$key = 'cabs.8825.live_details';
+
+// Check key existence
+Redis::exists($key);       // Returns 0 if not exists
+
+// Try fetching the data
+Redis::hgetall($key);      // Returns empty array if not exists
+Redis::get($key);          // Returns null if not exists
+```
+
+### Expected Output (if key doesn't exist):
+
+```php
+=> 0
+=> []
+=> null
+```
+
+---
+
+## Step 2: Restore Key from JSON Backup
+
+### Load the JSON and Decode:
 
 ```php
 $json = file_get_contents('/var/www/html/storage/app/cabs_8825_live_details.json');
 $data = json_decode($json, true);
-$elastiCache->setAll('cabs.8825.live_details', $data);
 ```
+
+### Set Redis Key Based on Data Type:
+
+```php
+if (is_array($data)) {
+    Redis::hmset($key, $data);   // Store as a hash
+} else {
+    Redis::set($key, $data);     // Store as a string
+}
+```
+
+---
+
+## Step 3: Verify Restoration
+
+### Run:
+
+```php
+Redis::exists($key);      // Should return 1
+Redis::hgetall($key);     // Should return the restored data
+```
+
+### Example Output:
+
+```php
+=> 1
+
+=> [
+  "city_id" => "1",
+  "driver_id" => "23414",
+  "driver_app_version" => "3.6.83",
+  "cab_id" => "8825",
+  "status" => "On Local Trip Assigned",
+  ...
+]
+```
+
+---
+
+## Notes
+
+* `hmset()` is used for associative arrays (hashes).
+* Always validate your JSON before decoding.
+* If key already exists and needs to be overwritten, Redis will automatically overwrite it during `hmset()` or `set()`.
+
+---
 
 > This will push the backed-up data back to Redis under the same key.
 
