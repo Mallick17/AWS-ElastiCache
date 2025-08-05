@@ -135,6 +135,94 @@ Containing the backed-up Redis data in JSON format.
 
 ---
 
+## Redis Key Deletion via Laravel Tinker
+
+We will:
+
+1. **Delete** the key `cabs.8825.live_details` from Redis.
+
+## Prerequisites
+
+* Laravel is running inside a Docker container.
+* Redis is connected and accessible via Laravel (e.g., using your `App\Packages\Cache\ElastiCache` class).
+* You already have the backup file (JSON format), either:
+
+  * Inside the container at: `/var/www/html/storage/app/cabs_8825_live_details.json`
+  * Or on your local machine and copied into the container.
+
+---
+
+## Step 1: Delete the Redis Key
+
+### 🔹 1.1 Enter Laravel Tinker
+
+```bash
+php artisan tinker
+```
+
+---
+
+### 🔹 1.2 Use the Redis wrapper class
+
+```php
+use App\Packages\Cache\ElastiCache;
+```
+
+---
+
+### 🔹 1.3 Initialize the ElastiCache class
+
+```php
+$elastiCache = new ElastiCache();
+```
+
+---
+
+### 🔹 1.4 Define the key and delete it
+
+```php
+$cabId = 8825;
+$key = 'cabs.' . $cabId . '.live_details';
+$elastiCache->delete($key);
+```
+
+✅ This command removes the Redis key from the database.
+
+---
+
+### 🔹 1.5 Verify deletion (optional)
+
+```php
+$elastiCache->getAll($key);
+```
+
+You should get:
+
+```php
+=> []
+```
+
+or
+
+```php
+=> null
+```
+
+---
+
+
+## Summary Table
+
+| Action           | Command                              |
+| ---------------- | ------------------------------------ |
+| Delete key       | `$elastiCache->delete($key);`        |
+| Backup file read | `file_get_contents('path_to_file')`  |
+| JSON decode      | `json_decode($json, true)`           |
+| Restore key      | `$elastiCache->setAll($key, $data);` |
+
+
+---
+
 # 📘 Redis Key Restoration via Laravel Tinker
 ## Use Case
 
@@ -254,157 +342,6 @@ Redis::hgetall($key);     // Should return the restored data
 | Serialization format | JSON                         |
 | File creation        | `file_put_contents()`        |
 | File transfer        | `docker cp`                  |
-
----
-
-## Objective
-
-We will:
-
-1. **Delete** the key `cabs.8825.live_details` from Redis.
-2. **Restore** it using a previously backed-up JSON file (`cabs_8825_live_details.json`).
-
----
-
-## Prerequisites
-
-* Laravel is running inside a Docker container.
-* Redis is connected and accessible via Laravel (e.g., using your `App\Packages\Cache\ElastiCache` class).
-* You already have the backup file (JSON format), either:
-
-  * Inside the container at: `/var/www/html/storage/app/cabs_8825_live_details.json`
-  * Or on your local machine and copied into the container.
-
----
-
-## Step 1: Delete the Redis Key
-
-### 🔹 1.1 Enter Laravel Tinker
-
-```bash
-php artisan tinker
-```
-
----
-
-### 🔹 1.2 Use the Redis wrapper class
-
-```php
-use App\Packages\Cache\ElastiCache;
-```
-
----
-
-### 🔹 1.3 Initialize the ElastiCache class
-
-```php
-$elastiCache = new ElastiCache();
-```
-
----
-
-### 🔹 1.4 Define the key and delete it
-
-```php
-$cabId = 8825;
-$key = 'cabs.' . $cabId . '.live_details';
-$elastiCache->delete($key);
-```
-
-✅ This command removes the Redis key from the database.
-
----
-
-### 🔹 1.5 Verify deletion (optional)
-
-```php
-$elastiCache->getAll($key);
-```
-
-You should get:
-
-```php
-=> []
-```
-
-or
-
-```php
-=> null
-```
-
----
-
-## Step 2: Restore the Redis Key from JSON
-
-Assuming you already have a JSON file named `cabs_8825_live_details.json`.
-
----
-
-### 🔹 2.1 (Optional) If the file is on your local machine, copy it into the container:
-
-```bash
-docker cp cabs_8825_live_details.json 467a2ae897cf:/var/www/html/storage/app/cabs_8825_live_details.json
-```
-
----
-
-### 🔹 2.2 Enter Laravel Tinker again (if not already)
-
-```bash
-php artisan tinker
-```
-
----
-
-### 🔹 2.3 Read and decode the JSON
-
-```php
-$json = file_get_contents('/var/www/html/storage/app/cabs_8825_live_details.json');
-$data = json_decode($json, true);
-```
-
-✅ `$data` now contains the associative array that was saved in the backup.
-
----
-
-### 🔹 2.4 Set the Redis key back
-
-```php
-$elastiCache->setAll($key, $data);
-```
-
-✅ This restores the original Redis key and all its fields.
-
----
-
-### 🔹 2.5 Confirm restoration
-
-```php
-$elastiCache->getAll($key);
-```
-
-You should now see the full restored structure like:
-
-```php
-=> [
-     "city_id" => "1",
-     "device_id" => "",
-     "driver_id" => "23414",
-     ...
-   ]
-```
-
----
-
-## Summary Table
-
-| Action           | Command                              |
-| ---------------- | ------------------------------------ |
-| Delete key       | `$elastiCache->delete($key);`        |
-| Backup file read | `file_get_contents('path_to_file')`  |
-| JSON decode      | `json_decode($json, true)`           |
-| Restore key      | `$elastiCache->setAll($key, $data);` |
 
 ---
 
