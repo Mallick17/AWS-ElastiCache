@@ -133,6 +133,7 @@ cabs_8825_live_details.json
 
 Containing the backed-up Redis data in JSON format.
 
+---
 
 <details>
  <summary>Click to view Mallow Technology Method</summary>
@@ -394,9 +395,6 @@ if (isset($backup[$key])) {
 }
 ```
 
----
-
- 
 </details>
 
 ---
