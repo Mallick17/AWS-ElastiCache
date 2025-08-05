@@ -1,13 +1,13 @@
-# 📘 Redis Installation, Setup, Key Insert & Backup, and Key Sync (Local ↔ ElastiCache)
+# Redis Installation, Setup, Key Insert & Backup, and Key Sync (Local ↔ ElastiCache)
 
-## 📦 1. Install Redis on Amazon Linux (with build from source)
+## 1. Install Redis on Amazon Linux (with build from source)
 
 ```bash
 # Install Redis via DNF (optional, if you just want the binary)
 sudo dnf install redis -y
 ```
 
-### 🔧 Alternatively, build Redis from source:
+### Alternatively, build Redis from source:
 
 ```bash
 # Install required build tools
@@ -31,7 +31,7 @@ sudo make install
 
 ---
 
-## 🚀 2. Start Redis Server Locally
+## 2. Start Redis Server Locally
 
 ```bash
 # From inside the redis-stable directory
@@ -47,7 +47,7 @@ cd redis-stable/src/
 
 ---
 
-## 📝 3. Create and View Redis Keys
+## 3. Create and View Redis Keys
 
 ```redis
 127.0.0.1:6379> SET mykey "adith"
@@ -71,7 +71,7 @@ cd redis-stable/src/
 
 ---
 
-## 💾 4. Backup dump.rdb File
+## 4. Backup dump.rdb File
 
 ```bash
 # Ensure you're in redis-stable/src
@@ -89,7 +89,7 @@ mv dump.rdb /root/redis-stable/src/
 
 ---
 
-## ✅ 5. Verify Key Persistence
+## 5. Verify Key Persistence
 
 ```bash
 cd /root/redis-stable/src/
@@ -102,7 +102,7 @@ cd /root/redis-stable/src/
 
 ---
 
-## 🔁 6. Sync Keys from AWS ElastiCache to Local Redis
+## 6. Sync Keys from AWS ElastiCache to Local Redis
 
 ### Install Redis Python Client
 
@@ -194,7 +194,7 @@ redis-cli -h <name>.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
 
 ---
 
-## 🧹 Optional Cleanup
+## Optional Cleanup
 
 ```bash
 # Remove the sync script if no longer needed
@@ -203,7 +203,7 @@ rm sync_redis_keys.py
 
 ---
 
-## ✅ Summary
+## Summary
 
 | Step | Description                                            |
 | ---- | ------------------------------------------------------ |
@@ -216,21 +216,16 @@ rm sync_redis_keys.py
 
 ---
 
-Here is a **clean and organized documentation** for restoring Redis keys from a local `dump.rdb` to an **ElastiCache Redis** cluster, including **full, partial, and single-key restoration workflows**:
 
----
+# Restore Redis Keys from Local `dump.rdb` to AWS ElastiCache
 
-# 🔄 Restore Redis Keys from Local `dump.rdb` to AWS ElastiCache
-
-## ⚠️ Why `dump.rdb` Cannot Be Directly Restored to ElastiCache
+## Why `dump.rdb` Cannot Be Directly Restored to ElastiCache
 
 ElastiCache Redis is a **managed service** and does **not support direct file access** like a self-hosted Redis server.
 
 > ❌ You cannot upload `dump.rdb` directly to ElastiCache.
 
----
-
-## ✅ Solution: Use Key-Level Sync via Scripts
+## Solution: Use Key-Level Sync via Scripts
 
 Instead of direct file-level operations, you must:
 
@@ -239,9 +234,9 @@ Instead of direct file-level operations, you must:
 
 ---
 
-## 🧭 Full Restore: All Keys from Local to ElastiCache
+# Full Restore: All Keys from Local to ElastiCache
 
-### 🔁 Step 1: Load `dump.rdb` into Local Redis
+### Step 1: Load `dump.rdb` into Local Redis
 
 ```bash
 # Stop running Redis
@@ -257,9 +252,7 @@ sudo systemctl start redis
 
 This will load all keys from the `dump.rdb` into your local Redis server.
 
----
-
-### 🧠 Step 2: Sync All Keys to ElastiCache via Python
+### Step 2: Sync All Keys to ElastiCache via Python
 
 #### Install the Redis client
 
@@ -313,9 +306,7 @@ print("✅ Restore from local Redis to ElastiCache complete.")
 python3 push_to_elasticache.py
 ```
 
----
-
-### ✅ Verify Keys in ElastiCache
+### Verify Keys in ElastiCache
 
 ```bash
 redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
@@ -324,7 +315,7 @@ redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
 
 ---
 
-## 🗑️ Delete and Restore a Specific Key
+# Delete and Restore a Specific Key
 
 ### Step 1: Delete the Key in ElastiCache
 
@@ -337,8 +328,6 @@ redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 DEL "you
 ```bash
 DEL "rate_limit_summary_user:2025-07-31 17:03"
 ```
-
----
 
 ### Step 2: Restore One Key via Python
 
@@ -379,8 +368,6 @@ else:
 print(f"✅ Key restored to ElastiCache: {KEY_TO_RESTORE}")
 ```
 
----
-
 ### Step 3: Verify the Key in ElastiCache
 
 ```bash
@@ -393,7 +380,7 @@ redis-cli -h <name>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 HGETALL 
 
 ---
 
-## 🔁 Backup One Specific Key from ElastiCache to Local Redis
+# Backup One Specific Key from ElastiCache to Local Redis
 
 ### Step 1: Copy Key from ElastiCache → Local Redis
 
@@ -447,7 +434,7 @@ This will save the updated key to `/var/lib/redis/dump.rdb`.
 
 ---
 
-## ⚠️ Important Notes
+## Important Notes
 
 * ElastiCache **does NOT support** commands like:
 
@@ -457,10 +444,11 @@ This will save the updated key to `/var/lib/redis/dump.rdb`.
 
 ---
 
-## 📦 Optional Enhancements
+## Optional Enhancements
 
-* ✅ Support for TTLs (expire times)
-* ✅ Logging or dry-run mode
-* ✅ Filtering by key pattern (e.g., only `prefix:*`)
+* Support for TTLs (expire times)
+* Logging or dry-run mode
+* Filtering by key pattern (e.g., only `prefix:*`)
 
+---
 
