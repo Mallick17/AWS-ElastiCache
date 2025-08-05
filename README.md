@@ -319,4 +319,162 @@ You should now see the full restored structure like:
 
 ---
 
+# Taking entire Redis Elasticache Backup
+
+## ✅ 1. View All Redis Keys
+
+### 🔹 If using Laravel's Redis facade:
+
+php
+use Illuminate\Support\Facades\Redis;
+
+Redis::keys('*');
+
+
+> 📝 This returns all Redis keys matching * (i.e., all keys). Be cautious: In production Redis with many keys, this can be expensive.
+The error you're seeing:
+
+```
+Predis\Response\ServerException with message 'WRONGTYPE Operation against a key holding the wrong kind of value'
+```
+
+means that you tried to perform a `GET` or `HGETALL` on a key that has a Redis **data type different** from what the code expects.
+
+---
+
+## ❌ Why It Happens
+
+The code only checks:
+
+* If the key is a `hash`, use `hgetall`
+* Otherwise, assume it’s a `string` and use `get`
+
+But Redis has **other data types**:
+
+* `list`
+* `set`
+* `zset`
+* `stream`
+
+If your Redis contains any of these, calling `get()` or `hgetall()` on them will throw the error you're seeing.
+
+---
+
+## ✅ Solution: Add a Full Type Check Before Reading
+
+Update your backup code to handle all key types **or skip unknown ones safely**.
+
+---
+
+### ✅ **Safe & Flexible Backup Script**
+
+```php
+use Illuminate\Support\Facades\Redis;
+
+$keys = Redis::keys('*');
+$allData = [];
+
+foreach ($keys as $key) {
+    $type = Redis::type($key);
+
+    switch ($type) {
+        case 'string':
+            $allData[$key] = [
+                'type' => 'string',
+                'value' => Redis::get($key),
+            ];
+            break;
+
+        case 'hash':
+            $allData[$key] = [
+                'type' => 'hash',
+                'value' => Redis::hgetall($key),
+            ];
+            break;
+
+        case 'list':
+            $allData[$key] = [
+                'type' => 'list',
+                'value' => Redis::lrange($key, 0, -1),
+            ];
+            break;
+
+        case 'set':
+            $allData[$key] = [
+                'type' => 'set',
+                'value' => Redis::smembers($key),
+            ];
+            break;
+
+        case 'zset':
+            $allData[$key] = [
+                'type' => 'zset',
+                'value' => Redis::zrange($key, 0, -1, 'WITHSCORES'),
+            ];
+            break;
+
+        default:
+            // Skip unsupported or unknown types
+            continue;
+    }
+}
+
+file_put_contents('/var/www/html/storage/app/redis_backup.json', json_encode($allData, JSON_PRETTY_PRINT));
+```
+
+---
+
+### ✅ Restore Script for Multiple Types
+
+```php
+use Illuminate\Support\Facades\Redis;
+
+$json = file_get_contents('/var/www/html/storage/app/redis_backup.json');
+$data = json_decode($json, true);
+
+foreach ($data as $key => $entry) {
+    $type = $entry['type'];
+    $value = $entry['value'];
+
+    switch ($type) {
+        case 'string':
+            Redis::set($key, $value);
+            break;
+
+        case 'hash':
+            Redis::hmset($key, $value);
+            break;
+
+        case 'list':
+            foreach ($value as $item) {
+                Redis::rpush($key, $item);
+            }
+            break;
+
+        case 'set':
+            foreach ($value as $item) {
+                Redis::sadd($key, $item);
+            }
+            break;
+
+        case 'zset':
+            foreach ($value as $member => $score) {
+                Redis::zadd($key, $score, $member);
+            }
+            break;
+    }
+}
+```
+
+---
+
+## ✅ Result
+
+With this improved script:
+
+* You **won’t get type errors**
+* You **can back up and restore all key types**, not just strings and hashes
+
+---
+
 
