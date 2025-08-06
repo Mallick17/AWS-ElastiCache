@@ -104,32 +104,51 @@ Save this as `restore_to_local_redis.py`:
 ```python
 import redis
 import json
+import base64
 
 DB_RANGE = range(0, 7)
+
+def try_base64_decode(val):
+    try:
+        # Try decoding assuming it's base64
+        return base64.b64decode(val.encode('ascii'))
+    except Exception:
+        # If decoding fails, assume it's plain text
+        return val.encode('utf-8')
 
 def restore_db(db_index):
     with open(f'dump_db_{db_index}.json') as f:
         data = json.load(f)
-    r = redis.StrictRedis(host='localhost', port=6379, db=db_index, decode_responses=True)
+    r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
+
     for key, item in data.items():
         t = item['type']
         v = item['value']
+        key_b = try_base64_decode(key)
+
         if t == 'string':
-            r.set(key, v)
+            r.set(key_b, try_base64_decode(v))
+
         elif t == 'hash':
-            r.hset(key, mapping=v)
+            decoded_hash = {try_base64_decode(k): try_base64_decode(val) for k, val in v.items()}
+            r.hset(key_b, mapping=decoded_hash)
+
         elif t == 'list':
-            r.rpush(key, *v)
+            r.rpush(key_b, *[try_base64_decode(i) for i in v])
+
         elif t == 'set':
-            r.sadd(key, *v)
+            r.sadd(key_b, *[try_base64_decode(i) for i in v])
+
         elif t == 'zset':
-            r.zadd(key, {k: s for k, s in v})
-    print(f'DB {db_index} restored.')
+            r.zadd(key_b, {try_base64_decode(k): s for k, s in v})
+
+    print(f"✅ DB {db_index} restored.")
 
 if __name__ == "__main__":
     for db_index in DB_RANGE:
         restore_db(db_index)
-    print('✅ Done restoring all DBs.')
+    print("🎉 All Redis DBs restored successfully.")
+
 ```
 
 Run:
