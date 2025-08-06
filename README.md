@@ -95,7 +95,34 @@ select 1
 Check for key existence:
 
 ```redis
-exists somekey
+keys *
+```
+
+> output
+> 13411) "cabs.5114.live_details"
+13412) "cabs.9161.live_details"
+13413) "cabs.8788.live_details"
+13414) "cabs.8163.live_details"
+13415) "cabs.12103.live_details"
+13416) "cabs.4001.live_details"
+13417) "cabs.12496.live_details"
+13418) "cabs.10590.live_details"
+13419) "cabs.9175.live_details"
+13420) "cabs.5916.live_details"
+13421) "cabs.369.live_details"
+(0.57s)
+
+```
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[3]> select 4
+OK
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[4]> select 5
+OK
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[5]> select 6
+OK
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[6]> keys *
+1) "user_check_fare_booking_counts"
+2) "user_app_search_session_details:2025-08-06"
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[6]> 
 ```
 
 Repeat `select N` from 0 to 15 to check each DB:
