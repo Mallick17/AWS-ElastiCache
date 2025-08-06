@@ -1,5 +1,240 @@
 # Redis Installation, Setup, Key Insert & Backup, and Key Sync (Local ↔ ElastiCache)
 
+<details>
+    <summary>Clean Documentation without Error</summary>
+
+Here is a clean, detailed step-by-step documentation based on your setup for **exporting Redis keys from AWS ElastiCache**, **navigating multiple Redis databases**, and using `redis-cli` effectively.
+
+---
+
+# 🧾 Redis ElastiCache Access & Export Guide (RHEL/YUM-based Linux)
+
+## 📌 Objective
+
+* Install and use `redis-cli` to access **AWS ElastiCache for Redis**
+* Export all keys and values to a local JSON file via Python
+* Handle multiple Redis databases (Redis supports 16 DBs by default: `0–15`)
+* Restore/export data safely by identifying key types
+
+---
+
+## 1. 🧱 Prerequisites
+
+### ✅ AWS ElastiCache Redis
+
+* Confirm endpoint (e.g., `redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com`)
+* Port (default: `6379`)
+* Make sure **security groups** allow access from your EC2 or local instance
+
+### ✅ Linux EC2 (RHEL/CentOS/Amazon Linux)
+
+Update the system and install dependencies:
+
+```bash
+sudo yum update -y
+sudo yum install -y gcc jemalloc-devel tcl
+sudo yum groupinstall -y "Development Tools"
+```
+
+---
+
+## 2. 📥 Install Redis CLI Only (No Server Daemon)
+
+### A. Download & Compile Redis
+
+```bash
+curl -O http://download.redis.io/redis-stable.tar.gz
+tar xzvf redis-stable.tar.gz
+cd redis-stable
+make redis-cli
+sudo cp src/redis-cli /usr/local/bin/
+cd ..
+rm -rf redis-stable redis-stable.tar.gz
+```
+
+### B. Verify Installation
+
+```bash
+redis-cli --version
+# Output: redis-cli 7.x.x
+```
+
+---
+
+## 3. 🔌 Connect to AWS ElastiCache
+
+```bash
+redis-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379
+```
+
+### ✅ Redis CLI Connected Output:
+
+```bash
+redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379>
+```
+
+---
+
+## 4. 🧭 Working with Multiple Redis Databases
+
+### A. By default, you're in DB 0:
+
+Check keys:
+
+```redis
+dbsize
+keys *
+```
+
+### B. Switch to another DB:
+
+```redis
+select 1
+```
+
+Check for key existence:
+
+```redis
+exists somekey
+```
+
+Repeat `select N` from 0 to 15 to check each DB:
+
+```bash
+for i in {0..15}; do
+  echo "DB $i:"
+  redis-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $i dbsize
+done
+```
+
+### C. Admin Commands Blocked in ElastiCache
+
+The following do **not** work in AWS-managed Redis:
+
+```redis
+config get databases     # ❌ Blocked
+monitor                  # ❌ Blocked
+```
+
+---
+
+## 5. 📤 Export All Redis Keys with Python
+
+### A. Install Required Python Modules
+
+```bash
+sudo yum install -y python3-pip
+pip3 install redis
+```
+
+### B. Save the following script as `sync_redis_keys.py`:
+
+```python
+import redis
+import json
+
+source_redis = redis.Redis(
+    host='redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True,
+    db=1  # Change DB number as needed
+)
+
+export_data = []
+
+print("📤 Exporting keys from Redis...\n")
+cursor = '0'
+while True:
+    cursor, keys = source_redis.scan(cursor=cursor, count=100)
+    for key in keys:
+        key_type = source_redis.type(key)
+        ttl = source_redis.ttl(key)
+        entry = {"key": key, "type": key_type, "ttl": ttl, "value": None}
+        try:
+            if key_type == 'string':
+                entry["value"] = source_redis.get(key)
+            elif key_type == 'hash':
+                entry["value"] = source_redis.hgetall(key)
+            elif key_type == 'set':
+                entry["value"] = list(source_redis.smembers(key))
+            elif key_type == 'list':
+                entry["value"] = source_redis.lrange(key, 0, -1)
+            elif key_type == 'zset':
+                entry["value"] = source_redis.zrange(key, 0, -1, withscores=True)
+            else:
+                print(f"⚠️ Unknown type '{key_type}' for key '{key}' — skipping")
+                continue
+            export_data.append(entry)
+        except Exception as e:
+            print(f"❌ Failed to export key '{key}': {e}")
+    if cursor == '0':
+        break
+
+with open("redis_export.json", "w") as f:
+    json.dump(export_data, f, indent=2)
+
+print(f"\n✅ Exported {len(export_data)} keys to redis_export.json")
+```
+
+### C. Run the Export
+
+```bash
+python3 sync_redis_keys.py
+```
+
+✅ Output:
+
+```bash
+📤 Exporting keys from Redis...
+
+✅ Exported 45 keys to redis_export.json
+```
+
+---
+
+## 6. 🧪 Testing Redis Keys in CLI
+
+Inside the correct DB (`select 1` for example):
+
+```redis
+exists cabs.7204.live_details
+# (integer) 1
+
+ttl cabs.7204.live_details
+# (integer) 1450 (or -1 if no expiry)
+
+type cabs.7204.live_details
+# hash
+
+hgetall cabs.7204.live_details
+```
+
+---
+
+## 🧠 Redis Data Types Recap
+
+| Redis Type | CLI Command                  | Python Access via redis-py            |
+| ---------- | ---------------------------- | ------------------------------------- |
+| string     | `get key`                    | `get(key)`                            |
+| hash       | `hgetall key`                | `hgetall(key)`                        |
+| list       | `lrange key 0 -1`            | `lrange(key, 0, -1)`                  |
+| set        | `smembers key`               | `smembers(key)`                       |
+| zset       | `zrange key 0 -1 withscores` | `zrange(key, 0, -1, withscores=True)` |
+
+---
+
+## 7. ✅ Summary
+
+* You successfully installed and compiled `redis-cli`
+* Connected to AWS ElastiCache and selected the correct DB
+* Exported key data to a JSON file with types and TTLs preserved
+* Avoided admin commands (disabled in AWS)
+* Used `php artisan tinker` and Laravel to cross-check which DB holds your keys
+
+---
+
+</details>
+
 ## 1. Install Redis on Amazon Linux (with build from source)
 
 ```bash
