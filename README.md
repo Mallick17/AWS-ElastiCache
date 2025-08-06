@@ -100,18 +100,19 @@ keys *
 
 > output
 > 13411) "cabs.5114.live_details"
-13412) "cabs.9161.live_details"
-13413) "cabs.8788.live_details"
-13414) "cabs.8163.live_details"
-13415) "cabs.12103.live_details"
-13416) "cabs.4001.live_details"
-13417) "cabs.12496.live_details"
-13418) "cabs.10590.live_details"
-13419) "cabs.9175.live_details"
-13420) "cabs.5916.live_details"
-13421) "cabs.369.live_details"
-(0.57s)
+> 13412) "cabs.9161.live_details"
+> 13413) "cabs.8788.live_details"
+> 13414) "cabs.8163.live_details"
+> 13415) "cabs.12103.live_details"
+> 13416) "cabs.4001.live_details"
+> 13417) "cabs.12496.live_details"
+> 13418) "cabs.10590.live_details"
+> 13419) "cabs.9175.live_details"
+> 13420) "cabs.5916.live_details"
+> 13421) "cabs.369.live_details"
+> (0.57s)
 
+### C. Multiple Switches to another-another DB:
 ```
 redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com:6379[3]> select 4
 OK
@@ -134,7 +135,7 @@ for i in {0..15}; do
 done
 ```
 
-### C. Admin Commands Blocked in ElastiCache
+### D. Admin Commands Blocked in ElastiCache
 
 The following do **not** work in AWS-managed Redis:
 
