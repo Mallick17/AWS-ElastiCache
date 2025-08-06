@@ -1,3 +1,57 @@
+Thanks — you're using **Amazon Linux 2**, and by default, it **does not** include Redis in its standard repositories.
+
+Here are your **working options** to install Redis on Amazon Linux 2:
+
+---
+
+### ✅ Option 1: Install Redis via Amazon Linux 2 Extra Repository
+
+```bash
+sudo amazon-linux-extras enable redis6
+sudo yum clean metadata
+sudo yum install -y redis
+```
+
+Then start and enable it:
+
+```bash
+sudo systemctl start redis
+sudo systemctl enable redis
+```
+
+Verify it's running:
+
+```bash
+redis-cli ping
+# Output: PONG
+```
+
+---
+<details>
+    <summary>Option 2: Use Redis via Docker (no system install required)</summary>
+
+### ✅ Option 2: Use Redis via Docker (no system install required)
+
+If Docker is available, you can spin up Redis in a container:
+
+```bash
+docker run --name redis-local -p 6379:6379 -d redis
+```
+
+Then test:
+
+```bash
+redis-cli ping
+# PONG
+```
+
+And run your restore script — it will connect to `localhost:6379` by default.
+
+---
+
+Let me know which option you'd like to go with, or if you want to install **Redis from source** instead.
+
+</details>
 
 ## ✅ Step-by-Step Plan
 
