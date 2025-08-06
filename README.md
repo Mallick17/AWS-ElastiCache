@@ -55,15 +55,15 @@ cd redis-stable/src/
 "adith"
 
 127.0.0.1:6379> SET mykey1 "abishek"
-127.0.0.1:6379> SET mykey2 "abishek big boss"
+127.0.0.1:6379> SET mykey2 "big boss"
 127.0.0.1:6379> SET mykey3 "abi"
-127.0.0.1:6379> SET mykey4 "abishek married boss"
-127.0.0.1:6379> SET mykey5 "abishek married"
+127.0.0.1:6379> SET mykey4 "abishekboss"
+127.0.0.1:6379> SET mykey5 "Jeeva"
 127.0.0.1:6379> SET mykey6 "santhosh"
-127.0.0.1:6379> SET mykey7 "kutty boss santhosh"
-127.0.0.1:6379> SET mykey8 "kutty bass clk"
+127.0.0.1:6379> SET mykey7 "santosh"
+127.0.0.1:6379> SET mykey8 "Thrisan"
 127.0.0.1:6379> SET mykey9 "Mallick"
-127.0.0.1:6379> SET mykey10 "No boss Mallick"
+127.0.0.1:6379> SET mykey10 "Gyan"
 
 # Save snapshot to dump.rdb
 127.0.0.1:6379> SAVE
