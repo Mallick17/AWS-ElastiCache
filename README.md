@@ -452,3 +452,169 @@ This will save the updated key to `/var/lib/redis/dump.rdb`.
 
 ---
 
+
+<details>
+    <summary>Clean Method for mallow</summary>
+
+
+Great point — you **absolutely should track the key type** when exporting, so you can **restore each key correctly** without guessing.
+
+Below are two options:
+
+---
+
+## ✅ Option 1: Export keys + values + types to JSON
+
+Instead of syncing directly to Redis, you export everything to a structured `.json` file like this:
+
+```json
+[
+  {
+    "key": "user:123",
+    "type": "hash",
+    "ttl": 3600,
+    "value": {
+      "name": "John",
+      "email": "john@example.com"
+    }
+  },
+  {
+    "key": "online_users",
+    "type": "set",
+    "ttl": -1,
+    "value": ["user1", "user2"]
+  },
+  ...
+]
+```
+
+Then you can restore each key **accurately**, based on its saved type.
+
+---
+
+## ✅ Here's the Updated Python Script to **Export to JSON**
+
+```python
+import redis
+import json
+
+source_redis = redis.Redis(
+    host='redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+export_data = []
+
+print("📤 Exporting keys from Redis...\n")
+cursor = '0'
+while cursor != 0:
+    cursor, keys = source_redis.scan(cursor=cursor, count=100)
+
+    for key in keys:
+        key_type = source_redis.type(key)
+        ttl = source_redis.ttl(key)
+        entry = {"key": key, "type": key_type, "ttl": ttl, "value": None}
+
+        try:
+            if key_type == 'string':
+                entry["value"] = source_redis.get(key)
+
+            elif key_type == 'hash':
+                entry["value"] = source_redis.hgetall(key)
+
+            elif key_type == 'set':
+                entry["value"] = list(source_redis.smembers(key))
+
+            elif key_type == 'list':
+                entry["value"] = source_redis.lrange(key, 0, -1)
+
+            elif key_type == 'zset':
+                entry["value"] = source_redis.zrange(key, 0, -1, withscores=True)
+
+            else:
+                print(f"⚠️ Unknown type '{key_type}' for key '{key}' — skipping")
+                continue
+
+            export_data.append(entry)
+
+        except Exception as e:
+            print(f"❌ Failed to export key '{key}': {e}")
+
+# Write to file
+with open("redis_export.json", "w") as f:
+    json.dump(export_data, f, indent=2)
+
+print(f"\n✅ Exported {len(export_data)} keys to redis_export.json")
+```
+
+---
+
+## ✅ Restoration Script (from `redis_export.json`)
+
+You can later run this to **restore to any Redis**:
+
+```python
+import redis
+import json
+
+destination_redis = redis.Redis(
+    host='127.0.0.1',
+    port=6379,
+    decode_responses=True
+)
+
+with open("redis_export.json") as f:
+    data = json.load(f)
+
+for item in data:
+    key = item["key"]
+    key_type = item["type"]
+    ttl = item["ttl"]
+    value = item["value"]
+
+    try:
+        if key_type == "string":
+            destination_redis.set(key, value)
+
+        elif key_type == "hash":
+            destination_redis.hset(key, mapping=value)
+
+        elif key_type == "set":
+            destination_redis.sadd(key, *value)
+
+        elif key_type == "list":
+            destination_redis.rpush(key, *value)
+
+        elif key_type == "zset":
+            destination_redis.zadd(key, dict(value))
+
+        if ttl and ttl > 0:
+            destination_redis.expire(key, ttl)
+
+    except Exception as e:
+        print(f"❌ Failed to restore key '{key}': {e}")
+
+print("✅ Restore complete.")
+```
+
+---
+
+## 🔐 Pro Tips
+
+* Track keys by `type` always when doing migrations.
+* Save `ttl` so time-sensitive keys behave correctly.
+* If you want to include timestamps or namespaces, we can enhance the schema.
+
+---
+
+Let me know if you want:
+
+* This to work with **multiple Redis clusters**
+* Output in **CSV** or a different structure
+* To export **only keys of a certain pattern or prefix**
+
+Ready when you are.
+
+    
+</details>
