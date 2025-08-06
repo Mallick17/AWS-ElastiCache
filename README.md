@@ -340,36 +340,43 @@ Run this in `php artisan tinker` or your custom command:
 ```php
 use Illuminate\Support\Facades\Redis;
 
-// Get all keys
 $keys = Redis::connection('custom')->keys('*');
-
 $allData = [];
 
 foreach ($keys as $key) {
     $type = Redis::connection('custom')->type($key);
+    $value = null;
 
     switch ($type) {
         case 'hash':
-            $allData[$key] = Redis::connection('custom')->hgetall($key);
+            $value = Redis::connection('custom')->hgetall($key);
             break;
         case 'string':
-            $allData[$key] = Redis::connection('custom')->get($key);
+            $value = Redis::connection('custom')->get($key);
             break;
         case 'zset':
-            $allData[$key] = Redis::connection('custom')->zrangebyscore($key, '-inf', '+inf');
+            // include scores too
+            $zsetMembers = Redis::connection('custom')->zrange($key, 0, -1, ['withscores' => true]);
+            $value = $zsetMembers;
             break;
         case 'list':
-            $allData[$key] = Redis::connection('custom')->lrange($key, 0, -1);
+            $value = Redis::connection('custom')->lrange($key, 0, -1);
             break;
         case 'set':
-            $allData[$key] = Redis::connection('custom')->smembers($key);
+            $value = Redis::connection('custom')->smembers($key);
             break;
         default:
-            $allData[$key] = "Unsupported type: $type";
+            $value = "Unsupported type: $type";
     }
+
+    $allData[$key] = [
+        'type' => $type,
+        'value' => $value,
+    ];
 }
 
 file_put_contents(storage_path('app/redis_backup.json'), json_encode($allData, JSON_PRETTY_PRINT));
+
 ```
 
 ---
