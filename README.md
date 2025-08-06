@@ -616,5 +616,49 @@ Let me know if you want:
 
 Ready when you are.
 
+You're almost there! That last error just means the **`redis` Python package is not installed** on your system.
+
+---
+
+## ✅ Step to Fix
+
+Run this to install the Redis client library for Python:
+
+```bash
+pip3 install redis
+```
+
+> If `pip3` is not available, install it with:
+
+```bash
+sudo yum install -y python3-pip
+```
+
+Then try your script again:
+
+```bash
+python3 sync_redis_keys.py
+```
+
+---
+
+### 🔎 Confirm it works:
+
+After `pip3 install redis`, verify with:
+
+```bash
+python3 -c "import redis; print(redis.__version__)"
+```
+
+You should see something like:
+
+```
+4.6.0
+```
+
+---
+
+Let me know when this is done, and if you'd like to switch to **JSON export format** (as discussed earlier) for long-term backup or migration.
+
     
 </details>
