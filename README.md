@@ -251,6 +251,12 @@ for db in {0..15}; do
 done
 ```
 
+or
+
+```
+for i in {0..15}; do echo "DB $i:"; redis-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $i dbsize; done
+```
+
 - Output Example
   
 ```
