@@ -620,6 +620,8 @@ You're almost there! That last error just means the **`redis` Python package is 
 
 ---
 
+# After 1st Error
+
 ## ✅ Step to Fix
 
 Run this to install the Redis client library for Python:
