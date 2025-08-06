@@ -402,6 +402,67 @@ if (isset($backup[$key])) {
 }
 ```
 
+---
+
+### Restoring Entire Backup
+
+
+```
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Log;
+
+// Load backup file
+$backupFile = storage_path('app/redis_backup.json');
+$backupJson = file_get_contents($backupFile);
+$backupData = json_decode($backupJson, true);
+
+foreach ($backupData as $key => $entry) {
+    if (!isset($entry['type'], $entry['value'])) {
+        Log::warning("Invalid backup entry format for key: $key");
+        continue;
+    }
+
+    $type = $entry['type'];
+    $value = $entry['value'];
+
+    switch ($type) {
+        case 'string':
+            Redis::connection('custom')->set($key, $value);
+            break;
+
+        case 'hash':
+            Redis::connection('custom')->del($key); // clear existing data
+            Redis::connection('custom')->hmset($key, $value);
+            break;
+
+        case 'list':
+            Redis::connection('custom')->del($key);
+            foreach ($value as $item) {
+                Redis::connection('custom')->rpush($key, $item);
+            }
+            break;
+
+        case 'set':
+            Redis::connection('custom')->del($key);
+            foreach ($value as $item) {
+                Redis::connection('custom')->sadd($key, $item);
+            }
+            break;
+
+        case 'zset':
+            Redis::connection('custom')->del($key);
+            foreach ($value as $member => $score) {
+                Redis::connection('custom')->zadd($key, $score, $member);
+            }
+            break;
+
+        default:
+            Log::warning("Unsupported Redis type: $type for key: $key");
+    }
+}
+
+```
+
 </details>
 
 ---
