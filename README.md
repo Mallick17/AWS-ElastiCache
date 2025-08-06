@@ -192,3 +192,109 @@ You can also query specific keys:
 ---
 
 Would you like me to prepare a `.sh` file to run both Python scripts automatically?
+
+---
+---
+The error you're seeing means that **your script is trying to connect to a Redis server on `localhost:6379`**, but **no Redis server is currently running there**, so the connection is refused:
+
+```
+redis.exceptions.ConnectionError: Error 111 connecting to localhost:6379. Connection refused.
+```
+
+---
+
+### ✅ Step-by-step fix:
+
+#### **1. Start a local Redis server**
+
+If Redis is not running, start it:
+
+```bash
+redis-server --daemonize yes
+```
+
+> This will start Redis in the background on port 6379.
+
+#### **2. Check if Redis is now running**
+
+Use:
+
+```bash
+redis-cli ping
+```
+
+Expected output:
+
+```bash
+PONG
+```
+
+If not, check logs:
+
+```bash
+cat /var/log/redis/redis.log
+```
+
+Or if Redis was installed manually:
+
+```bash
+cat /tmp/redis.log
+```
+
+---
+
+### ✅ Optional: Bind Redis to all interfaces (for remote access, not recommended on production)
+
+If needed, edit your config (usually `/etc/redis/redis.conf` or `/etc/redis.conf`) and ensure:
+
+```ini
+bind 127.0.0.1
+```
+
+Or allow external access (risky unless firewalled):
+
+```ini
+bind 0.0.0.0
+```
+
+And:
+
+```ini
+protected-mode no
+```
+
+Then restart:
+
+```bash
+redis-server /etc/redis.conf
+```
+
+---
+
+### ✅ Once Redis is running
+
+You can rerun your script:
+
+```bash
+python restore_to_local_redis.py
+```
+
+---
+
+### 🧪 Bonus: Check if local Redis has correct DBs restored
+
+Run:
+
+```bash
+for db in {0..6}; do
+    echo -n "DB $db: ";
+    redis-cli -n $db dbsize;
+done
+```
+
+You should see non-zero values confirming restore.
+
+---
+
+Let me know if you want a `docker`-based Redis setup instead.
+
