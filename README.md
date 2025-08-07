@@ -712,3 +712,91 @@ print(f"\n✅ Copied {copied} missing keys.")
 ```
   
 </details>
+
+---
+
+# To verify all the keys in the local weather it is present or not
+
+<details>
+  <summary>Click here to view step by step guide</summary>
+
+### 🔎 **To verify which DB a key exists in — on *local Redis only* — and report missing ones**
+
+
+### ✅ **Does**
+
+* Scans all **databases (0–15)** in **local Redis only**
+* Reports:
+
+  * Which DB each key exists in (first match)
+  * Which keys are **missing entirely**
+
+---
+
+### ✅ Python Script: `verify_keys_in_local.py`
+
+```python
+import redis
+
+# ----------- CONFIGURATION -----------
+LOCAL_REDIS = {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "decode_responses": True
+}
+
+# ----------- List of Keys to Check -----------
+keys_to_check = [
+    "cabs.9278.live_details",
+    "cabs.9274.live_details",
+    "cabs.9272.live_details",
+    "cabs.9271.live_details",
+    "cabs.8954.live_details",
+    "cabs.8950.live_details",
+    "cabs.8945.live_details"
+]
+
+# ----------- Logic -----------
+local = redis.Redis(**LOCAL_REDIS)
+
+print("\n🔍 Searching for keys in local Redis (DBs 0–15)...\n")
+
+for key in keys_to_check:
+    found = False
+
+    for db in range(16):
+        local.select(db)
+        if local.exists(key):
+            print(f"✅ Found: {key} in DB {db}")
+            found = True
+            break
+
+    if not found:
+        print(f"❌ Missing: {key} (not found in any DB)")
+
+print("\n✅ Done.")
+```
+
+---
+
+- Run the script
+  ```
+  python3 verify_keys_in_local.py
+  ```
+
+---
+### ✅ Output Example
+
+```bash
+✅ Found: cabs.9278.live_details in DB 1
+✅ Found: cabs.9274.live_details in DB 0
+❌ Missing: cabs.9271.live_details (not found in any DB)
+```
+
+---
+
+
+</details>
+
+
+
