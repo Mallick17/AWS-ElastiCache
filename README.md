@@ -2030,5 +2030,98 @@ print(f"\n✅ Backup complete. {len(backup_data)} keys saved to {output_file}")
    * Handles all Redis types: `string`, `hash`, `set`, `zset`, and `list`.
 
 ---
+
+### ✅ YES — It Can Work
+
+Python + `redis-py` can easily process 30,000 keys **one-by-one** from a `keys.txt` file and fetch their values from ElastiCache.
+- Yes, your script **can handle 30,000 keys**, **but** there are **important limitations and optimizations** to keep in mind when backing up that many keys from ElastiCache:
+
+But you must address:
+
+---
+
+## ⚠️ Performance and Limits
+
+| Concern             | Description                                                                                               | Recommendation                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| **Time**            | 30,000 keys can take **minutes** to hours depending on latency and key size.                              | Use batching or concurrency.                  |
+| **Timeouts**        | ElastiCache may **drop idle clients** or large slow queries.                                              | Set proper timeouts; avoid long blocking ops. |
+| **Memory**          | If the data volume is large (e.g., 100 MB+), `backup_data` dictionary in memory can cause **RAM spikes**. | Stream output instead of loading all in RAM.  |
+| **Throttling**      | AWS may **rate-limit** your ElastiCache connection on high traffic.                                       | Add delays or concurrency control.            |
+| **Multi-threading** | Currently the script runs **sequentially**. It will take longer.                                          | Use multiprocessing or threading.             |
+
+---
+
+### ✅ Optimized Solutions
+
+#### 🔁 **Option A – Just Run as Is**
+
+If you're OK waiting for 10–20+ minutes and the memory fits your system, the script will work.
+Make sure:
+
+```python
+r = redis.StrictRedis(host=..., port=..., socket_connect_timeout=10, socket_timeout=10)
+```
+
+#### 🚀 **Option B – Add Progress and Batch Logging**
+
+Use `tqdm` for progress bar and `flush` intermediate backups every 5,000 keys:
+
+```bash
+pip install tqdm
+```
+
+In script:
+
+```python
+from tqdm import tqdm
+```
+
+Wrap loop like:
+
+```python
+for key in tqdm(keys_to_backup, desc=f"Scanning DB {db_index}"):
+```
+
+Every 5,000 keys, write partial output:
+
+```python
+if len(backup_data) % 5000 == 0:
+    with open(output_file, "w") as f:
+        json.dump(backup_data, f, indent=2)
+```
+
+#### ⚡ **Option C – Multi-threaded Fetching**
+
+Split `keys_to_backup` into chunks (e.g., 10 threads × 3,000 keys) and run each in a thread with its own connection to ElastiCache.
+
+Let me know if you want me to write that **multithreaded version**.
+
+---
+
+### ✅ Tips for Your Use Case
+
+* If you're doing this from an **EC2 instance in same VPC**, it will be much faster than running from outside AWS.
+* Prefer **using DB 0 only** for ElastiCache unless you've customized DB index.
+* If your key data is large (e.g., hash/zset with 10,000 items), it might hit memory or performance thresholds — best to test on 1,000 keys first.
+
+---
+
+### ✅ Summary
+
+| ✅ Works for 30k keys? | ✔ Yes                               |
+| --------------------- | ----------------------------------- |
+| 🐢 May be slow?       | ✔ Yes                               |
+| 🧠 High memory usage? | ✔ Possible, depends on key sizes    |
+| 🚀 Improvements?      | ✔ Threading or batching recommended |
+
+---
+
+Exploreable Options:
+
+* Add progress bar and partial save?
+* Convert to multi-threaded version for faster fetching?
+* Add command-line options for easier reuse?
+
   
 </details>
