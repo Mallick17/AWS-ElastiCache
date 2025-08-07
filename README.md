@@ -1451,6 +1451,16 @@ DB 15: (integer) 0
 ```
 import redis
 import json
+import base64
+
+# Helper to safely decode binary to string
+def safe_decode(value):
+    if isinstance(value, str):
+        return value
+    try:
+        return value.decode("utf-8")
+    except Exception:
+        return base64.b64encode(value).decode("ascii")
 
 # Keys to backup
 keys_to_backup = [
@@ -1465,23 +1475,33 @@ for db_index in range(16):
     r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
 
     for key in keys_to_backup:
-        if r.exists(key):
-            key_type = r.type(key).decode()
+        # Ensure key is in bytes for Redis operations
+        key_bytes = key.encode("utf-8") if isinstance(key, str) else key
+
+        if r.exists(key_bytes):
+            key_type = safe_decode(r.type(key_bytes))
+            key_decoded = safe_decode(key_bytes)
 
             if key_type == "string":
-                value = r.get(key).decode()
+                value = safe_decode(r.get(key_bytes))
+
             elif key_type == "hash":
-                value = {k.decode(): v.decode() for k, v in r.hgetall(key).items()}
+                raw = r.hgetall(key_bytes)
+                value = {safe_decode(k): safe_decode(v) for k, v in raw.items()}
+
             elif key_type == "set":
-                value = [v.decode() for v in r.smembers(key)]
+                value = [safe_decode(v) for v in r.smembers(key_bytes)]
+
             elif key_type == "zset":
-                value = [(v.decode(), score) for v, score in r.zrange(key, 0, -1, withscores=True)]
+                value = [(safe_decode(v), score) for v, score in r.zrange(key_bytes, 0, -1, withscores=True)]
+
             elif key_type == "list":
-                value = [v.decode() for v in r.lrange(key, 0, -1)]
+                value = [safe_decode(v) for v in r.lrange(key_bytes, 0, -1)]
+
             else:
                 value = None
 
-            backup_data[key] = {
+            backup_data[key_decoded] = {
                 "type": key_type,
                 "value": value,
                 "db": db_index
@@ -1492,6 +1512,7 @@ with open("redis_backup.json", "w") as f:
     json.dump(backup_data, f, indent=2)
 
 print("✅ Backup complete. Saved to redis_backup.json")
+
 ```
 
 - Execute the script
