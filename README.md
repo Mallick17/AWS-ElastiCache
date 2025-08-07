@@ -632,6 +632,83 @@ for db in range(16):
 
 print(f"\n🎯 Done. Total missing keys: {total_missing}, total copied: {total_copied}")
 ```
+### Another kind of script to compare the single db's
 
+```python
+import redis
+
+# --- Connect to ElastiCache Redis (source) ---
+source_redis = redis.Redis(
+    host='<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+# --- Connect to Local Redis (destination) ---
+destination_redis = redis.Redis(
+    host='127.0.0.1',
+    port=6379,
+    decode_responses=True
+)
+
+# --- Fetch all keys from both Redis ---
+print("🔄 Fetching keys from both Redis instances...")
+source_keys = set(source_redis.scan_iter('*'))
+destination_keys = set(destination_redis.scan_iter('*'))
+
+# --- Calculate missing keys ---
+missing_keys = sorted(source_keys - destination_keys)
+
+print(f"\n📦 Total source keys      : {len(source_keys)}")
+print(f"💾 Total local keys       : {len(destination_keys)}")
+print(f"❌ Missing keys to sync   : {len(missing_keys)}")
+
+# --- Copy missing keys ---
+copied = 0
+for key in missing_keys:
+    try:
+        key_type = source_redis.type(key)
+        ttl = source_redis.ttl(key)
+
+        if key_type == 'string':
+            value = source_redis.get(key)
+            destination_redis.set(key, value)
+
+        elif key_type == 'hash':
+            value = source_redis.hgetall(key)
+            if value:
+                destination_redis.hset(key, mapping=value)
+
+        elif key_type == 'set':
+            members = source_redis.smembers(key)
+            if members:
+                destination_redis.sadd(key, *members)
+
+        elif key_type == 'zset':
+            zitems = source_redis.zrange(key, 0, -1, withscores=True)
+            if zitems:
+                destination_redis.zadd(key, dict(zitems))
+
+        elif key_type == 'list':
+            items = source_redis.lrange(key, 0, -1)
+            if items:
+                destination_redis.rpush(key, *items)
+
+        else:
+            print(f"⚠️ Skipping unsupported type '{key_type}' for key: {key}")
+            continue
+
+        # Set TTL if exists
+        if ttl and ttl > 0:
+            destination_redis.expire(key, ttl)
+
+        copied += 1
+
+    except Exception as e:
+        print(f"❌ Error copying '{key}': {e}")
+
+print(f"\n✅ Copied {copied} missing keys.")
+
+```
   
 </details>
