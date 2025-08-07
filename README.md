@@ -1,1292 +1,304 @@
-# Installing Redis and taking backup of the DB from Elasticache Redis to Redis Local Server
+# Amazon ElastiCache
+Amazon ElastiCache is a fully managed, scalable, and secure in-memory caching service provided by AWS (Amazon Web Services). It simplifies the process of setting up, operating, and scaling an in-memory data store or cache in the cloud. It is widely used to improve application performance by reducing the latency of accessing data and reducing the load on databases or backend services.
 
----
-### **🧰 Prerequisites**
+## ElastiCache Workflow of an Web Application
+### Scenario:
+- Imagine you're running a **web application** in a **containerized environment** (using Amazon ECS or EKS) and you're distributing content globally via **CloudFront** to reduce latency for users worldwide.
+- Here’s how **ElastiCache** fits into this architecture:
+  > **Visualizing It:**
+  > 
+  > **User Request → CloudFront (caches static content) → Backend (ECS/EKS) → ElastiCache (in-memory) → RDS/DynamoDB (if cache miss)**
+- This architecture provides **faster data access** and **reduces database load**, leading to better performance for your application.
 
-Ensure the following are ready on your Linux system:
-
-* `redis-cli` installed
-* Python 3.7+ installed
-* AWS ElastiCache Redis **endpoint** accessible from your instance (i.e., no VPC access restriction)
-* Local Redis server installed (default: single node, 16 DBs)
-  
-### ✅ Option 1: Install Redis via Amazon Linux 2 Extra Repository
-
-```bash
-sudo amazon-linux-extras enable redis6
-sudo yum clean metadata
-sudo yum install -y redis
-```
-
-Then start and enable it:
-
-```bash
-sudo systemctl start redis
-sudo systemctl enable redis
-```
-
-Verify it's running:
-
-```bash
-redis-cli ping
-# Output: PONG
-```
+### 1. **Initial Request Flow** (Without ElastiCache):
 
 <details>
-    <summary>Option 2: Use Redis via Docker (no system install required)</summary>
+   <summary>Click to View Initial Request flow without ElastiCache</summary>
 
-### ✅ Option 2: Use Redis via Docker (no system install required)
+* A user from a distant geographical location makes a request to your application (e.g., querying a product page).
+* The request first hits **CloudFront** (a Content Delivery Network, CDN), which caches static content (like images, CSS, and JavaScript) close to the user, reducing latency.
+* For dynamic content (like user data, product details, etc.), CloudFront forwards the request to your **backend container cluster** (ECS/EKS), where your application is running.
+* The backend processes the request and fetches the data from your **primary database** (say, Amazon RDS, DynamoDB, or an external DB).
+* The backend then returns the processed data to CloudFront, which caches it temporarily for future requests.
+* The user receives the response.
 
-If Docker is available, you can spin up Redis in a container:
+**Problem:** Every time a user makes a request, your backend is fetching data from the database. If many users request the same data (e.g., product details), the database can become a bottleneck, leading to slower response times and higher costs from read-heavy operations.
 
-```bash
-docker run --name redis-local -p 6379:6379 -d redis
-```
+</details>
 
-Then test:
+### 2. **How ElastiCache Helps (with Caching):**
+Now, let’s introduce **Amazon ElastiCache** into the system to improve this process.
 
-```bash
-redis-cli ping
-# PONG
-```
+<details>
+   <summary>Click to View Request flow with ElastiCache</summary>
+   
+#### **How ElastiCache Works in this Scenario:**
 
-And run your restore script — it will connect to `localhost:6379` by default.
+1. **Setting Up ElastiCache**:
+
+   * You create an **ElastiCache cluster** using **Redis** (or **Memcached** depending on your needs) in AWS.
+   * You configure your backend containers (ECS/EKS) to use ElastiCache as an in-memory caching layer.
+
+2. **Modified Request Flow (With ElastiCache):**
+
+   * **Step 1:** A user makes a request for dynamic content (e.g., a product page).
+   * **Step 2:** The request goes through **CloudFront**. CloudFront will cache any static content, as before. However, for dynamic content, CloudFront checks if that content has been cached in the CDN **edge location**.
+
+     * If **cached**, CloudFront serves the response directly to the user with low latency.
+     * If **not cached**, CloudFront forwards the request to your backend containers.
+   * **Step 3:** Your backend container (ECS/EKS) first checks **ElastiCache** to see if the requested data (e.g., product info) is already stored in the cache.
+
+     * If the data is **cached** in ElastiCache (cache hit), the backend retrieves the data **instantly** from the in-memory cache, greatly reducing latency.
+     * If the data is **not cached** (cache miss), your backend queries the **primary database** (e.g., RDS), retrieves the data, and then stores it in **ElastiCache** for future use.
+   * **Step 4:** The backend processes the data (if needed) and sends it to CloudFront, which then serves the response to the user.
+
+3. **Subsequent Requests (Cache Hits):**
+
+   * When subsequent requests for the same product or dynamic content come in, **CloudFront** first checks its cache for static content.
+   * If CloudFront doesn’t have the cached dynamic content, it goes to the backend, but now the **ElastiCache** layer will return the data quickly (since it’s stored in memory) without hitting the database.
+   * As more requests are handled, ElastiCache keeps serving the data much faster than querying the database repeatedly.
+
+</details>
+
+---
+#### **How This Improves Performance and Reduces Latency:**
+1. Fast Data Retrieval with ElastiCache
+2. Reduced Database Load
+3. Global Caching
+4. Low Latency for Users
+5. Cost Efficiency
+
+<details>
+   <summary>Click to View Detailed Insights on Performance and Reduced Latency</summary>
+
+1. **Fast Data Retrieval with ElastiCache**:
+
+   * **ElastiCache (Redis or Memcached)** stores frequently accessed data in memory. Data retrieval from memory is orders of magnitude faster than querying a database or disk storage.
+   * Instead of hitting your primary database for every request, the backend gets data from **ElastiCache** nearly instantly.
+
+2. **Reduced Database Load**:
+
+   * By offloading frequent requests to ElastiCache, your database isn't constantly bombarded with read-heavy operations. This reduces load, preventing database bottlenecks and allowing your database to focus on more critical tasks like write operations and complex queries.
+
+3. **Global Caching**:
+
+   * **CloudFront** caches static content globally at its edge locations, but when combined with **ElastiCache**, CloudFront can also cache dynamic content at the **origin** level (from your backend containers).
+   * This means both **static** and **dynamic** content can be served faster, based on what's stored in **ElastiCache** and **CloudFront**.
+
+4. **Low Latency for Users**:
+
+   * As the content is cached in **ElastiCache**, subsequent requests from users (even from faraway regions) will be served quickly because the data is **already in memory** and does not need to be recalculated or fetched from the database.
+   * This ensures users get a **faster response** and an overall smoother experience.
+
+5. **Cost Efficiency**:
+
+   * Using ElastiCache reduces the need for more powerful, costly database instances since it offloads frequent reads.
+   * Your **CloudFront** and **ElastiCache** setup can serve requests at a fraction of the cost compared to constantly scaling the database to handle read traffic.
+
+</details>
+
+<details>
+   <summary>Key Features & Use Cases of Amazon ElastiCache</summary>
+
+### Key Features of Amazon ElastiCache:
+1. Fully managed services
+2. Scalable
+3. High Availability
+4. Low Latency
+5. Supports Redis and Memcached
+6. Security
+7. Cost-Effective
+   
+<details>
+   <summary>Click to View Detailed Features of Amazon ElastiCache</summary>
+
+1. **Fully Managed Service**: ElastiCache is fully managed, meaning AWS handles the infrastructure management, such as hardware provisioning, setup, configuration, patching, and scaling, leaving you to focus on building your applications.
+
+2. **Scalable**: You can scale ElastiCache horizontally and vertically. You can increase capacity easily to meet growing demand and scale down when you no longer need as much capacity.
+
+3. **High Availability**: ElastiCache supports replication, automatic failover, and backup, ensuring high availability for your applications and providing redundancy in case of failures.
+
+4. **Low Latency**: ElastiCache stores data in-memory, which leads to very fast data retrieval times (often in microseconds), reducing the latency that would be experienced when accessing data from traditional databases.
+
+5. **Supports Redis and Memcached**: ElastiCache supports two popular in-memory caching engines, **Redis** and **Memcached**. Both of these engines are designed to provide fast access to data and are widely used in caching and high-performance scenarios.
+
+6. **Security**: You can control access to your ElastiCache clusters using AWS Identity and Access Management (IAM), VPC (Virtual Private Cloud), and encryption.
+
+7. **Cost-Effective**: ElastiCache is designed to be cost-effective by improving application performance through caching, reducing the load on your backend systems, and lowering infrastructure costs.
+
+</details>
+
+### Use Cases for Amazon ElastiCache:
+1. Caching
+2. DB Performance Enhancement
+3. Real Time Analytics
+4. Message Queuing
+5. Geospatial Indexing
+6. Distributed Caching
+7. Search Index Caching
+
+<details>
+   <summary>Click to View Detailed Use Cases of Amazon ElastiCache</summary>
+   
+1. **Caching**:
+
+   - **Content Caching**: Store frequently requested content like web pages, API responses, or media files in an in-memory cache to quickly serve them to users, reducing backend load and improving user experience.
+   - **Session Caching**: Store session state for web applications in memory, so that session data can be accessed quickly without making frequent calls to the database.
+   - **Query Result Caching**: Cache database query results or computationally expensive operations to avoid performing the same computation or database query repeatedly.
+
+2. **Database Performance Enhancement**:
+
+   - **Reduce Database Load**: Offload frequent read requests from your database to the cache, allowing the database to focus on more complex queries or transactional operations, improving overall performance and response time.
+   - **Write-Through/Write-Behind Caching**: ElastiCache can be configured to automatically update the cache when data is written to the database. This ensures consistency between the cache and the backend data store.
+
+3. **Real-Time Analytics**:
+
+   - **Leaderboard and Counting**: ElastiCache (especially with Redis) is used for applications that require real-time analytics, such as leaderboards or tracking user activities where quick updates and reads are essential.
+   - **Session Tracking and Real-Time User Data**: Cache user session information, behavior, or analytics data that can be updated and retrieved in real time.
+
+4. **Message Queuing**:
+
+   - **Pub/Sub Systems**: Redis supports the "publish/subscribe" messaging paradigm, which can be used for real-time messaging systems, event notifications, or message queues in distributed systems.
+
+5. **Geospatial Indexing**:
+
+   - **Location-based Services**: Redis in ElastiCache provides support for geospatial data and operations, making it suitable for applications involving location-based queries (e.g., finding the nearest stores, users, or items).
+
+6. **Distributed Caching**:
+
+   - **Global Caching for Multi-Region Applications**: ElastiCache supports replication across regions, allowing a distributed cache for applications that require a fast, globally accessible cache layer.
+
+7. **Search Index Caching**:
+
+   - Caching search results, such as complex search queries or recommendations, to avoid repetitive and slow database lookups.
+
+### **ElastiCache and Redis:**
+
+**Redis** is an open-source, advanced key-value store that supports a variety of data structures such as strings, hashes, lists, sets, sorted sets, bitmaps, hyperloglogs, and geospatial indexes. It is commonly used as a caching layer, message broker, and for real-time analytics due to its low-latency, high-throughput capabilities.
+
+**ElastiCache for Redis** is Amazon's managed service for deploying, managing, and scaling Redis in the cloud. Redis provides several key features that make it a great choice for ElastiCache, including:
+
+- **Persistence**: Redis allows you to persist data to disk, which can be useful in use cases that require both high availability and durability. It offers snapshotting and append-only file persistence modes.
+- **Replication and Clustering**: Redis supports replication and sharding (with clustering), which is supported in ElastiCache to provide high availability and scalability.
+- **Pub/Sub**: Redis supports publish/subscribe messaging, which is ideal for event-driven architectures, and ElastiCache for Redis offers this functionality as part of its service.
+- **Advanced Data Structures**: Redis's advanced data structures like lists, sets, sorted sets, and hashes are widely used in real-time applications such as gaming leaderboards, recommendation engines, and more.
+
+When you use **Amazon ElastiCache for Redis**, AWS takes care of managing Redis clusters, scaling, monitoring, and availability. You only need to focus on the application logic, without worrying about the underlying infrastructure.
+
+</details>
 
 </details>
 
 ---
 
-# Installing Redis and taking backup of the entire 16 DB's from Elasticache Redis to Redis Local Server
+### Example Flow with Caching and CloudFront:
+
+Let’s break down a practical flow of this architecture:
+
+1. **User Request**: A user visits the website to view a product (e.g., Product A).
+2. **CloudFront Cache Check**:
+
+   * If **Product A** info is cached in CloudFront (static content like images), it’s served directly from the CDN.
+   * If **Product A** info is **not cached** in CloudFront, it sends the request to the backend containers (ECS/EKS).
+3. **Backend with ElastiCache**:
+
+   * The backend queries **ElastiCache** to see if **Product A** data is in memory.
+   * If **cached in ElastiCache**, it returns **instantly**.
+   * If **not cached**, it fetches data from **RDS**, stores it in **ElastiCache**, and returns the response to CloudFront.
+4. **Future Requests**:
+
+   * Any future requests for **Product A** (from any region) will benefit from CloudFront caching for static content and ElastiCache caching for dynamic content, making the whole process much faster.
+
+> 🛡 **Summary:**
+> 
+> * **ElastiCache** reduces the load on your **database** by caching frequently requested data, ensuring faster data retrieval.
+> * It **improves application performance** by storing and serving data from memory rather than having to query the database for every request.
+> * It works **seamlessly with CloudFront** to reduce latency both at the **edge (CloudFront)** and at the **backend (ElastiCache)**, delivering a highly responsive user experience.
+
+---
+
+### Key Differences Between ElastiCache with Redis and Memcached:
+
+1. **Data Structures**:
+
+   - **Redis**: Provides advanced data structures (strings, lists, sets, hashes, etc.).
+   - **Memcached**: Primarily a simple key-value store.
+
+2. **Persistence**:
+
+   - **Redis**: Supports persistence and durability options (RDB snapshots, AOF).
+   - **Memcached**: Does not offer built-in persistence, only volatile storage.
+
+3. **Replication & Clustering**:
+
+   - **Redis**: Supports replication and clustering for high availability and scalability.
+   - **Memcached**: Does not support native clustering, though it can be configured in a distributed system.
+
+4. **Use Case Suitability**:
+
+   - **Redis**: Best for use cases requiring complex data operations, pub/sub messaging, persistent data, and high availability.
+   - **Memcached**: Best for simple, high-speed caching requirements with a focus on key-value pairs and simplicity.
+
+### Example: Redis Use Cases with ElastiCache
+
+- **Leaderboard for a Gaming App**: Redis provides an efficient way to track real-time scores and rankings using sorted sets. ElastiCache for Redis can be used to store these rankings in-memory, ensuring that the game can update and retrieve rankings quickly.
+- **Shopping Cart**: Use Redis to store session data, cart information, and user preferences in real time. This helps in quickly retrieving the data without hitting a database every time.
+
+### **Good Use Cases for Redis**  
+1. **Session Storage**
+2. **Web Page Caching**  
+3. **Pub/Sub Messaging** 
+4. **Application State in Serverless Environments**  
+5. **S3 Object Lookup Optimization**  
+6. **Persistence Considerations** 
 
 <details>
-    <summary>Click to view Step-by-Step Plan</summary>
-
-
-## ✅ Step-by-Step Plan
-
----
-
-### **🧰 Prerequisites**
-
-Ensure the following are ready on your Linux system:
-
-* `redis-cli` installed
-* Python 3.7+ installed
-* AWS ElastiCache Redis **endpoint** accessible from your instance (i.e., no VPC access restriction)
-* Local Redis server installed (default: single node, 16 DBs)
-
----
-
-### **📦 Step 1: Install Required Tools**
-
-```bash
-# Install redis-cli (if not installed)
-sudo yum install redis -y
-
-# Install required Python tools
-python3 -m venv redisenv
-source redisenv/bin/activate
-pip install redis
-```
-
----
-
-### **📁 Step 2: Python Script to Dump All Redis Data by DB**
-
-Save this as `dump_redis_elasticache.py`:
-
-```python
-import redis
-import json
-import base64
-
-# CONFIG
-HOST = '<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com'
-PORT = 6379
-DB_RANGE = range(0, 7)
-
-def safe_decode(value):
-    try:
-        return value.decode('utf-8')
-    except Exception:
-        return base64.b64encode(value).decode('ascii')  # fallback to base64 string
-
-def dump_db(db_index):
-    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index)  # no decode_responses!
-    keys = r.keys('*')
-    data = {}
-    for key in keys:
-        try:
-            key_decoded = safe_decode(key)
-            key_type = r.type(key)
-            if key_type == b'string':
-                val = r.get(key)
-                data[key_decoded] = {'type': 'string', 'value': safe_decode(val)}
-            elif key_type == b'hash':
-                hash_data = r.hgetall(key)
-                data[key_decoded] = {
-                    'type': 'hash',
-                    'value': {safe_decode(k): safe_decode(v) for k, v in hash_data.items()}
-                }
-            elif key_type == b'list':
-                list_data = r.lrange(key, 0, -1)
-                data[key_decoded] = {'type': 'list', 'value': [safe_decode(i) for i in list_data]}
-            elif key_type == b'set':
-                set_data = r.smembers(key)
-                data[key_decoded] = {'type': 'set', 'value': [safe_decode(i) for i in set_data]}
-            elif key_type == b'zset':
-                zset_data = r.zrange(key, 0, -1, withscores=True)
-                data[key_decoded] = {'type': 'zset', 'value': [[safe_decode(i[0]), i[1]] for i in zset_data]}
-        except Exception as e:
-            print(f"❌ Error dumping key {key}: {e}")
-    with open(f'dump_db_{db_index}.json', 'w') as f:
-        json.dump(data, f, indent=2)
-
-if __name__ == "__main__":
-    for db_index in DB_RANGE:
-        print(f'Dumping DB {db_index}...')
-        dump_db(db_index)
-    print('✅ Done dumping all DBs.')
-
-```
-
-Run:
-
-```bash
-python dump_redis_elasticache.py
-```
-
-This will create 7 files: `dump_db_0.json` to `dump_db_6.json`.
-
----
-
-### **🔁 Step 3: Load Dumped Data into Local Redis**
-
-Save this as `restore_to_local_redis.py`:
-
-```python
-import redis
-import json
-import base64
-
-DB_RANGE = range(0, 7)
-
-def try_base64_decode(val):
-    try:
-        # Try decoding assuming it's base64
-        return base64.b64decode(val.encode('ascii'))
-    except Exception:
-        # If decoding fails, assume it's plain text
-        return val.encode('utf-8')
-
-def restore_db(db_index):
-    with open(f'dump_db_{db_index}.json') as f:
-        data = json.load(f)
-    r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
-
-    for key, item in data.items():
-        t = item['type']
-        v = item['value']
-        key_b = try_base64_decode(key)
-
-        if t == 'string':
-            r.set(key_b, try_base64_decode(v))
-
-        elif t == 'hash':
-            decoded_hash = {try_base64_decode(k): try_base64_decode(val) for k, val in v.items()}
-            r.hset(key_b, mapping=decoded_hash)
-
-        elif t == 'list':
-            r.rpush(key_b, *[try_base64_decode(i) for i in v])
-
-        elif t == 'set':
-            r.sadd(key_b, *[try_base64_decode(i) for i in v])
-
-        elif t == 'zset':
-            r.zadd(key_b, {try_base64_decode(k): s for k, s in v})
-
-    print(f"✅ DB {db_index} restored.")
-
-if __name__ == "__main__":
-    for db_index in DB_RANGE:
-        restore_db(db_index)
-    print("🎉 All Redis DBs restored successfully.")
-
-```
-
-Run:
-
-```bash
-python restore_to_local_redis.py
-```
-
----
-
-### **🧪 Step 4: Verify Locally**
-
-To check that DBs are correctly loaded:
-
-```bash
-redis-cli
-
-127.0.0.1:6379> SELECT 0
-127.0.0.1:6379[0]> DBSIZE
-
-127.0.0.1:6379> SELECT 1
-127.0.0.1:6379[1]> DBSIZE
-
-...repeat for DB 2 to 6
-```
-
-You can also query specific keys:
-
-```bash
-127.0.0.1:6379[0]> KEYS *
-127.0.0.1:6379[0]> HGETALL cabs.7204.live_details
-```
-
----
-
-## 📌 Notes
-
-* ElastiCache does **not allow CONFIG GET**, `BGSAVE`, or `DUMP`, hence we use key-based extraction.
-* This method works **without downtime** or special Redis permissions.
-
----
-
-The error you're seeing means that **your script is trying to connect to a Redis server on `localhost:6379`**, but **no Redis server is currently running there**, so the connection is refused:
-
-```
-redis.exceptions.ConnectionError: Error 111 connecting to localhost:6379. Connection refused.
-```
-
----
-
-### ✅ Step-by-step fix:
-
-#### **1. Start a local Redis server**
-
-If Redis is not running, start it:
-
-```bash
-redis-server --daemonize yes
-```
-
-> This will start Redis in the background on port 6379.
-
-#### **2. Check if Redis is now running**
-
-Use:
-
-```bash
-redis-cli ping
-```
-
-Expected output:
-
-```bash
-PONG
-```
-
-If not, check logs:
-
-```bash
-cat /var/log/redis/redis.log
-```
-
-Or if Redis was installed manually:
-
-```bash
-cat /tmp/redis.log
-```
-
----
-
-### ✅ Optional: Bind Redis to all interfaces (for remote access, not recommended on production)
-
-If needed, edit your config (usually `/etc/redis/redis.conf` or `/etc/redis.conf`) and ensure:
-
-```ini
-bind 127.0.0.1
-```
-
-Or allow external access (risky unless firewalled):
-
-```ini
-bind 0.0.0.0
-```
-
-And:
-
-```ini
-protected-mode no
-```
-
-Then restart:
-
-```bash
-redis-server /etc/redis.conf
-```
-
----
-
-### ✅ Once Redis is running
-
-You can rerun your script:
-
-```bash
-python restore_to_local_redis.py
-```
-
----
-
-### 🧪 Bonus: Check if local Redis has correct DBs restored
-
-Run:
-
-```bash
-for db in {0..6}; do
-    echo -n "DB $db: ";
-    redis-cli -n $db dbsize;
-done
-```
-
-You should see non-zero values confirming restore.
+  <summary>Explaination of Use Cases Mentioned Above</summary>
+   
+1. **Session Storage**  
+   - Primary use case for Redis.  
+   - Early web apps had single servers with state, but scaling for high availability and performance required distributed session storage.  
+   - Redis is a popular solution for this.  
+
+2. **Web Page Caching**  
+   - Store pre-rendered server-side content in Redis.  
+   - Acts as a database cache to reduce latency and query load on relational databases.  
+   - Popularized in the Rails community for cost optimization by minimizing database hits.  
+
+3. **Pub/Sub Messaging**  
+   - Supports low-latency microservice communication.  
+   - Useful for real-time messaging between services.  
+
+4. **Application State in Serverless Environments**  
+   - Lambda functions need shared state with low latency.  
+   - Redis serves as a fast state store instead of point-to-point communication.  
+
+5. **S3 Object Lookup Optimization**  
+   - S3 is an object store, not a file system, making key lookups expensive.  
+   - Solution:  
+     - Capture S3 object creation events via EventBridge.  
+     - Store object metadata in Redis for fast prefix-based lookups.  
+     - Avoids slow S3 `ListObjects` pagination for large buckets.  
+   - Trade-offs:  
+     - Requires sufficient memory.  
+     - Must handle high write throughput with proper scaling.  
+
+6. **Persistence Considerations**  
+   - Redis’s non-serverless nature may require additional scaling strategies.  
+   - Further discussion needed on persistence mechanisms.
 
 </details>
 
----
+### How ElastiCache Works:
 
-# Installing Redis and taking backup of the single-single DB from Elasticache Redis to Redis Local Server
+- **Setting up ElastiCache**: You start by creating a cache cluster in the AWS Management Console. You choose either Redis or Memcached as the engine, configure the cluster (choose instance types, enable security features, etc.), and deploy it in your Virtual Private Cloud (VPC).
 
-<details>
-  <summary>Click to view Step-by-Step Plan</summary>
+- **Data Access**: Applications access ElastiCache by connecting to the cluster's endpoint. ElastiCache will serve data from memory, providing low-latency responses. You can also configure it to automatically failover to a replica node in case of a failure.
 
-Got it — since you're losing some keys when exporting entire DBs in bulk, the best approach is to **isolate and export/restore one Redis DB at a time**, with full type safety and encoding support (e.g., base64 when needed).
+- **Monitoring & Maintenance**: AWS CloudWatch is integrated with ElastiCache, allowing you to monitor the performance and health of your clusters. ElastiCache also supports automatic backups and software patching.
 
----
+### Conclusion:
 
-### ✅ Step-by-Step Plan (Single DB at a Time)
-
----
-
-#### **1. Export a Single Redis DB Safely (ElastiCache → JSON)**
-
-Here’s a script that dumps a single DB with proper key type handling and base64 fallback for binary/unicode-safe export:
-
-```python
-# dump_db_safe.py
-import redis
-import json
-import base64
-
-HOST = 'your-elasticache-endpoint'
-PORT = 6379
-DB_INDEX = 0  # change this to target a single DB
-
-def safe_encode(value):
-    try:
-        json.dumps(value)
-        return {'encoding': 'plain', 'data': value}
-    except (TypeError, UnicodeDecodeError):
-        return {'encoding': 'base64', 'data': base64.b64encode(value.encode() if isinstance(value, str) else value).decode()}
-
-def dump_db(db_index):
-    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index, decode_responses=False)
-    keys = r.keys('*')
-    data = {}
-    for key in keys:
-        key_str = key.decode('utf-8', errors='replace')
-        key_type = r.type(key).decode()
-        if key_type == 'string':
-            val = r.get(key)
-            data[key_str] = {'type': 'string', 'value': safe_encode(val)}
-        elif key_type == 'hash':
-            val = {k.decode(): v.decode(errors='replace') for k, v in r.hgetall(key).items()}
-            data[key_str] = {'type': 'hash', 'value': val}
-        elif key_type == 'list':
-            val = [v.decode(errors='replace') for v in r.lrange(key, 0, -1)]
-            data[key_str] = {'type': 'list', 'value': val}
-        elif key_type == 'set':
-            val = [v.decode(errors='replace') for v in r.smembers(key)]
-            data[key_str] = {'type': 'set', 'value': val}
-        elif key_type == 'zset':
-            val = [(v.decode(errors='replace'), s) for v, s in r.zrange(key, 0, -1, withscores=True)]
-            data[key_str] = {'type': 'zset', 'value': val}
-    with open(f'dump_db_{db_index}.json', 'w') as f:
-        json.dump(data, f, indent=2)
-
-if __name__ == "__main__":
-    print(f'Dumping DB {DB_INDEX}...')
-    dump_db(DB_INDEX)
-    print('✅ Dumped dump_db_{DB_INDEX}.json')
-```
+Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
-
-#### **2. Restore to Local Redis (One DB at a Time)**
-
-This matches the dump format and decodes base64 if needed:
-
-```python
-# restore_db_safe.py
-import redis
-import json
-import base64
-
-DB_INDEX = 0  # same as exported DB
-
-def decode_value(val_obj):
-    if isinstance(val_obj, dict) and val_obj.get('encoding') == 'base64':
-        return base64.b64decode(val_obj['data']).decode(errors='replace')
-    return val_obj['data']
-
-def restore_db(db_index):
-    with open(f'dump_db_{db_index}.json') as f:
-        data = json.load(f)
-    r = redis.StrictRedis(host='localhost', port=6379, db=db_index, decode_responses=True)
-    for key, item in data.items():
-        t = item['type']
-        v = item['value']
-        if t == 'string':
-            r.set(key, decode_value(v))
-        elif t == 'hash':
-            r.hset(key, mapping=v)
-        elif t == 'list':
-            r.rpush(key, *v)
-        elif t == 'set':
-            r.sadd(key, *v)
-        elif t == 'zset':
-            r.zadd(key, {k: s for k, s in v})
-    print(f'✅ Restored DB {db_index}')
-
-if __name__ == "__main__":
-    restore_db(DB_INDEX)
-```
-
----
-
-### ✅ How to Run for Specific DB
-
-1. To export DB 3, update:
-
-```python
-DB_INDEX = 3
-```
-
-Run:
-
-```bash
-python dump_db_safe.py
-```
-
-2. To restore to local:
-
-```bash
-python restore_db_safe.py
-```
-
----
-
-Let me know if you want to:
-
-* Export/restore only specific **keys** inside the DB (rather than full DB),
-* Do a **batch script** for multiple DBs one by one, or
-* Have a `.sh` wrapper to automate this process.
-
-  
-</details>
-
-
----
-
-# To **clean (flush) the entire Redis database** on your local machine, you have two main options depending on whether you want to:
-
-
-### 🧹 1. **Flush a Single Database (e.g. DB 0)**
-
-```bash
-redis-cli FLUSHDB
-```
-
-This clears **only the currently selected database** (default is DB 0).
-
-To flush a specific DB, like DB 5:
-
-```bash
-redis-cli -n 5 FLUSHDB
-```
-
----
-
-### 💣 2. **Flush All Databases (DB 0 to DB 15)**
-
-```bash
-redis-cli FLUSHALL
-```
-
-This **removes all keys from all databases**. Be very careful with this one.
-
----
-
-### ✅ Optional: Confirm Redis is Clean
-
-After flushing, you can verify:
-
-```bash
-for i in {0..15}; do echo "DB $i:"; redis-cli -n $i dbsize; done
-```
-
-This will show `DB x: 0` for each DB if the flush was successful.
-
----
-
-# How to compare and sync all the dbs from elasticache to local redis
-
-<details>
-  <summary>Click to view step by step guide</summary>
-
-To **find which Redis keys are missing** during migration from ElastiCache to local Redis and ensure **no data loss**, you need to compare the keys in each DB *before and after* transfer and sync them.
-
-```python
-import redis
-
-# --- Connect to ElastiCache Redis (source) ---
-source_redis = redis.Redis(
-    host='<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Connect to Local Redis (destination) ---
-destination_redis = redis.Redis(
-    host='127.0.0.1',
-    port=6379,
-    decode_responses=True
-)
-
-total_missing = 0
-total_copied = 0
-
-for db in range(16):
-    print(f"\n📂 Processing DB {db}...")
-
-    source_redis.select(db)
-    destination_redis.select(db)
-
-    source_keys = set(source_redis.scan_iter('*'))
-    destination_keys = set(destination_redis.scan_iter('*'))
-
-    missing_keys = sorted(source_keys - destination_keys)
-
-    print(f"   🔍 Source keys     : {len(source_keys)}")
-    print(f"   💾 Local keys      : {len(destination_keys)}")
-    print(f"   ❌ Missing to copy : {len(missing_keys)}")
-
-    total_missing += len(missing_keys)
-    copied = 0
-
-    for key in missing_keys:
-        try:
-            key_type = source_redis.type(key)
-            ttl = source_redis.ttl(key)
-
-            if key_type == 'string':
-                value = source_redis.get(key)
-                destination_redis.set(key, value)
-
-            elif key_type == 'hash':
-                value = source_redis.hgetall(key)
-                if value:
-                    destination_redis.hset(key, mapping=value)
-
-            elif key_type == 'set':
-                members = source_redis.smembers(key)
-                if members:
-                    destination_redis.sadd(key, *members)
-
-            elif key_type == 'zset':
-                zitems = source_redis.zrange(key, 0, -1, withscores=True)
-                if zitems:
-                    destination_redis.zadd(key, dict(zitems))
-
-            elif key_type == 'list':
-                items = source_redis.lrange(key, 0, -1)
-                if items:
-                    destination_redis.rpush(key, *items)
-
-            else:
-                print(f"   ⚠️ Skipping unsupported type '{key_type}' for key: {key}")
-                continue
-
-            if ttl and ttl > 0:
-                destination_redis.expire(key, ttl)
-
-            copied += 1
-
-        except Exception as e:
-            print(f"   ❌ Error copying '{key}': {e}")
-
-    total_copied += copied
-    print(f"   ✅ Copied {copied} keys from DB {db}.")
-
-print(f"\n🎯 Done. Total missing keys: {total_missing}, total copied: {total_copied}")
-```
-### Another kind of script to compare the single db's
-
-```python
-import redis
-
-# --- Connect to ElastiCache Redis (source) ---
-source_redis = redis.Redis(
-    host='<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Connect to Local Redis (destination) ---
-destination_redis = redis.Redis(
-    host='127.0.0.1',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Fetch all keys from both Redis ---
-print("🔄 Fetching keys from both Redis instances...")
-source_keys = set(source_redis.scan_iter('*'))
-destination_keys = set(destination_redis.scan_iter('*'))
-
-# --- Calculate missing keys ---
-missing_keys = sorted(source_keys - destination_keys)
-
-print(f"\n📦 Total source keys      : {len(source_keys)}")
-print(f"💾 Total local keys       : {len(destination_keys)}")
-print(f"❌ Missing keys to sync   : {len(missing_keys)}")
-
-# --- Copy missing keys ---
-copied = 0
-for key in missing_keys:
-    try:
-        key_type = source_redis.type(key)
-        ttl = source_redis.ttl(key)
-
-        if key_type == 'string':
-            value = source_redis.get(key)
-            destination_redis.set(key, value)
-
-        elif key_type == 'hash':
-            value = source_redis.hgetall(key)
-            if value:
-                destination_redis.hset(key, mapping=value)
-
-        elif key_type == 'set':
-            members = source_redis.smembers(key)
-            if members:
-                destination_redis.sadd(key, *members)
-
-        elif key_type == 'zset':
-            zitems = source_redis.zrange(key, 0, -1, withscores=True)
-            if zitems:
-                destination_redis.zadd(key, dict(zitems))
-
-        elif key_type == 'list':
-            items = source_redis.lrange(key, 0, -1)
-            if items:
-                destination_redis.rpush(key, *items)
-
-        else:
-            print(f"⚠️ Skipping unsupported type '{key_type}' for key: {key}")
-            continue
-
-        # Set TTL if exists
-        if ttl and ttl > 0:
-            destination_redis.expire(key, ttl)
-
-        copied += 1
-
-    except Exception as e:
-        print(f"❌ Error copying '{key}': {e}")
-
-print(f"\n✅ Copied {copied} missing keys.")
-
-```
-  
-</details>
-
----
-
-# To verify all the keys or the specific keys weather it is present or not
-
-<details>
-  <summary>Click here to view step by step guide</summary>
-
-### 🔎 **To verify which DB a key exists in — on *local Redis only* — and report missing ones**
-
-
-### ✅ **Does**
-
-* Scans all **databases (0–15)** in **local Redis only**
-* Reports:
-
-  * Which DB each key exists in (first match)
-  * Which keys are **missing entirely**
-
----
-
-### ✅ Python Script: `verify_keys_in_local.py`
-
-```python
-import redis
-
-# ----------- CONFIGURATION -----------
-LOCAL_REDIS = {
-    "host": "127.0.0.1",
-    "port": 6379,
-    "decode_responses": True
-}
-
-# ----------- List of Keys to Check -----------
-keys_to_check = [
-    "cabs.9278.live_details",
-    "cabs.9274.live_details",
-    "cabs.9272.live_details",
-    "cabs.9271.live_details",
-    "cabs.8954.live_details",
-    "cabs.8950.live_details",
-    "cabs.8945.live_details"
-]
-
-# ----------- Logic -----------
-local = redis.Redis(**LOCAL_REDIS)
-
-print("\n🔍 Searching for keys in local Redis (DBs 0–15)...\n")
-
-for key in keys_to_check:
-    found = False
-
-    for db in range(16):
-        local.select(db)
-        if local.exists(key):
-            print(f"✅ Found: {key} in DB {db}")
-            found = True
-            break
-
-    if not found:
-        print(f"❌ Missing: {key} (not found in any DB)")
-
-print("\n✅ Done.")
-```
-
----
-
-- Run the script
-  ```
-  python3 verify_keys_in_local.py
-  ```
-
----
-### ✅ Output Example
-
-```bash
-✅ Found: cabs.9278.live_details in DB 1
-✅ Found: cabs.9274.live_details in DB 0
-❌ Missing: cabs.9271.live_details (not found in any DB)
-```
-
----
-
-### 🔎 **To verify which DB a key exists in — on *Elasticache Redis only* — and report missing ones**
-
-### ✅ Assumptions
-
-* Your **ElastiCache Redis endpoint** is available (e.g., `my-cluster.cache.amazonaws.com`)
-* You have network access (e.g., from an EC2 instance in the same VPC)
-* You want to check **specific keys** across **all DBs (0–15)**
-
----
-
-### ✅ Python Script: `verify_keys_elasticache.py`
-
-```python
-import redis
-
-# -------------------- Configuration --------------------
-ELASTICACHE_REDIS = {
-    "host": "<your-elasticache-endpoint>",  # Replace with your endpoint
-    "port": 6379,
-    "decode_responses": True
-}
-
-# -------------------- Keys to Check --------------------
-keys_to_check = [
-    "cabs.9278.live_details",
-    "cabs.9274.live_details",
-    "cabs.9272.live_details",
-    "cabs.9271.live_details",
-    "cabs.8954.live_details",
-    "cabs.8950.live_details",
-    "cabs.8945.live_details"
-]
-
-# -------------------- Script --------------------
-elasticache = redis.Redis(**ELASTICACHE_REDIS)
-
-print("\n🔍 Searching for keys in ElastiCache Redis (DBs 0–15)...\n")
-
-for key in keys_to_check:
-    found = False
-
-    for db in range(16):
-        try:
-            elasticache.execute_command('SELECT', db)
-            if elasticache.exists(key):
-                print(f"✅ Found: {key} in DB {db}")
-                found = True
-                break
-        except Exception as e:
-            print(f"⚠️ Error checking DB {db}: {e}")
-
-    if not found:
-        print(f"❌ Missing: {key} (not found in any DB)")
-
-print("\n✅ Done.")
-```
-
----
-
-### 🔁 Replace `<your-elasticache-endpoint>`:
-
-Use the full host name (e.g.):
-
-```python
-"host": "my-elasticache-name.abc123.ng.0001.aps1.cache.amazonaws.com"
-```
-
----
-
-### 🧪 Optional: Check Single Key Only
-
-You can also adapt the code to check a single key like this:
-
-```python
-key = "cabs.9278.live_details"
-found = False
-for db in range(16):
-    elasticache.execute_command('SELECT', db)
-    if elasticache.exists(key):
-        print(f"Found in DB {db}")
-        found = True
-        break
-if not found:
-    print("Key not found in any DB")
-```
-
----
-
-### ❗Important Notes
-
-* ElastiCache is single-threaded — avoid heavy scans in production.
-* `SELECT` is allowed on ElastiCache **if cluster mode is disabled**.
-* For **cluster-mode enabled**: keys are sharded — `SELECT` won't work. Let me know if this is your case.
-
----
-
-
-</details>
-
-
-<details>
-  <summary>All the scripts to executed in the machine</summary>
-
-```
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat comparesync.py
-import redis
-
-# --- Connect to ElastiCache Redis (source) ---
-source_redis = redis.Redis(
-    host='<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Connect to Local Redis (destination) ---
-destination_redis = redis.Redis(
-    host='127.0.0.1',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Fetch all keys from both Redis ---
-print("🔄 Fetching keys from both Redis instances...")
-source_keys = set(source_redis.scan_iter('*'))
-destination_keys = set(destination_redis.scan_iter('*'))
-
-# --- Calculate missing keys ---
-missing_keys = sorted(source_keys - destination_keys)
-
-print(f"\n📦 Total source keys      : {len(source_keys)}")
-print(f"💾 Total local keys       : {len(destination_keys)}")
-print(f"❌ Missing keys to sync   : {len(missing_keys)}")
-
-# --- Copy missing keys ---
-copied = 0
-for key in missing_keys:
-    try:
-        key_type = source_redis.type(key)
-        ttl = source_redis.ttl(key)
-
-        if key_type == 'string':
-            value = source_redis.get(key)
-            destination_redis.set(key, value)
-
-        elif key_type == 'hash':
-            value = source_redis.hgetall(key)
-            if value:
-                destination_redis.hset(key, mapping=value)
-
-        elif key_type == 'set':
-            members = source_redis.smembers(key)
-            if members:
-                destination_redis.sadd(key, *members)
-
-        elif key_type == 'zset':
-            zitems = source_redis.zrange(key, 0, -1, withscores=True)
-            if zitems:
-                destination_redis.zadd(key, dict(zitems))
-
-        elif key_type == 'list':
-            items = source_redis.lrange(key, 0, -1)
-            if items:
-                destination_redis.rpush(key, *items)
-
-        else:
-            print(f"⚠️ Skipping unsupported type '{key_type}' for key: {key}")
-            continue
-
-        # Set TTL if exists
-        if ttl and ttl > 0:
-            destination_redis.expire(key, ttl)
-
-        copied += 1
-
-    except Exception as e:
-        print(f"❌ Error copying '{key}': {e}")
-
-print(f"\n✅ Copied {copied} missing keys.")
-
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat dump_db_safe.py
-# dump_db_safe.py
-import redis
-import json
-import base64
-
-HOST = '<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com'
-PORT = 6379
-DB_INDEX = 6  # change this to target a single DB
-
-def safe_encode(value):
-    try:
-        json.dumps(value)
-        return {'encoding': 'plain', 'data': value}
-    except (TypeError, UnicodeDecodeError):
-        return {'encoding': 'base64', 'data': base64.b64encode(value.encode() if isinstance(value, str) else value).decode()}
-
-def dump_db(db_index):
-    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index, decode_responses=False)
-    keys = r.keys('*')
-    data = {}
-    for key in keys:
-        key_str = key.decode('utf-8', errors='replace')
-        key_type = r.type(key).decode()
-        if key_type == 'string':
-            val = r.get(key)
-            data[key_str] = {'type': 'string', 'value': safe_encode(val)}
-        elif key_type == 'hash':
-            val = {k.decode(): v.decode(errors='replace') for k, v in r.hgetall(key).items()}
-            data[key_str] = {'type': 'hash', 'value': val}
-        elif key_type == 'list':
-            val = [v.decode(errors='replace') for v in r.lrange(key, 0, -1)]
-            data[key_str] = {'type': 'list', 'value': val}
-        elif key_type == 'set':
-            val = [v.decode(errors='replace') for v in r.smembers(key)]
-            data[key_str] = {'type': 'set', 'value': val}
-        elif key_type == 'zset':
-            val = [(v.decode(errors='replace'), s) for v, s in r.zrange(key, 0, -1, withscores=True)]
-            data[key_str] = {'type': 'zset', 'value': val}
-    with open(f'dump_db_{db_index}.json', 'w') as f:
-        json.dump(data, f, indent=2)
-
-if __name__ == "__main__":
-    print(f'Dumping DB {DB_INDEX}...')
-    dump_db(DB_INDEX)
-    print('✅ Dumped dump_db_{DB_INDEX}.json')
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat redis_key_verifier.py
-import redis
-from typing import List
-
-# ----------- CONFIGURATION -----------
-SOURCE_REDIS = {
-    "host": "<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com",
-    "port": 6379,
-    "db": 0,
-    "decode_responses": True
-}
-
-LOCAL_REDIS = {
-    "host": "127.0.0.1",
-    "port": 6379,
-    "db": 0,
-    "decode_responses": True
-}
-
-# ---------- INIT CONNECTIONS ----------
-source = redis.Redis(**SOURCE_REDIS)
-local = redis.Redis(**LOCAL_REDIS)
-
-
-# ---------- VERIFY ALL KEYS ----------
-def verify_all_keys_across_dbs():
-    print("\n🔍 Verifying ALL keys across DBs 0–15...\n")
-    for db in range(16):
-        source.select(db)
-        local.select(db)
-
-        source_keys = set(source.scan_iter("*"))
-        local_keys = set(local.scan_iter("*"))
-
-        print(f"📂 DB {db}: {len(source_keys)} keys in source, {len(local_keys)} in local")
-
-        missing_keys = source_keys - local_keys
-        extra_keys = local_keys - source_keys
-
-        if missing_keys:
-            print(f"❌ Missing in LOCAL (DB {db}):")
-            for key in missing_keys:
-                print(f"   - {key}")
-        if extra_keys:
-            print(f"⚠️ Extra in LOCAL not in source (DB {db}):")
-            for key in extra_keys:
-                print(f"   - {key}")
-    print("\n✅ Verification complete.")
-
-
-# ---------- VERIFY SPECIFIC KEYS ----------
-def verify_specific_keys(keys: List[str]):
-    print(f"\n🔍 Verifying specific keys across DBs 0–15...\n")
-
-    for key in keys:
-        found_in_source = False
-        found_in_local = False
-
-        for db in range(16):
-            source.select(db)
-            if source.exists(key):
-                print(f"✅ Key '{key}' found in SOURCE Redis DB {db}")
-                found_in_source = True
-                break
-
-        for db in range(16):
-            local.select(db)
-            if local.exists(key):
-                print(f"✅ Key '{key}' found in LOCAL Redis DB {db}")
-                found_in_local = True
-                break
-
-        if not found_in_source:
-            print(f"❌ Key '{key}' NOT found in SOURCE Redis")
-        if not found_in_local:
-            print(f"❌ Key '{key}' NOT found in LOCAL Redis")
-
-
-# ---------- MAIN ENTRY ----------
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Redis DB Key Verifier")
-    parser.add_argument("--all", action="store_true", help="Check all DBs and keys")
-    parser.add_argument("--keys", nargs="+", help="List of keys to verify")
-
-    args = parser.parse_args()
-
-    if args.all:
-        verify_all_keys_across_dbs()
-    elif args.keys:
-        verify_specific_keys(args.keys)
-    else:
-        parser.print_help()
-
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat restore_db_safe.py
-# restore_db_safe.py
-import redis
-import json
-import base64
-
-DB_INDEX = 6  # same as exported DB
-
-def decode_value(val_obj):
-    if isinstance(val_obj, dict) and val_obj.get('encoding') == 'base64':
-        return base64.b64decode(val_obj['data']).decode(errors='replace')
-    return val_obj['data']
-
-def restore_db(db_index):
-    with open(f'dump_db_{db_index}.json') as f:
-        data = json.load(f)
-    r = redis.StrictRedis(host='localhost', port=6379, db=db_index, decode_responses=True)
-    for key, item in data.items():
-        t = item['type']
-        v = item['value']
-        if t == 'string':
-            r.set(key, decode_value(v))
-        elif t == 'hash':
-            r.hset(key, mapping=v)
-        elif t == 'list':
-            r.rpush(key, *v)
-        elif t == 'set':
-            r.sadd(key, *v)
-        elif t == 'zset':
-            r.zadd(key, {k: s for k, s in v})
-    print(f'✅ Restored DB {db_index}')
-
-if __name__ == "__main__":
-    restore_db(DB_INDEX)
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat sync_all_dbs.py
-import redis
-
-# --- Connect to ElastiCache Redis (source) ---
-source_redis = redis.Redis(
-    host='<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
-    port=6379,
-    decode_responses=True
-)
-
-# --- Connect to Local Redis (destination) ---
-destination_redis = redis.Redis(
-    host='127.0.0.1',
-    port=6379,
-    decode_responses=True
-)
-
-total_missing = 0
-total_copied = 0
-
-for db in range(16):
-    print(f"\n📂 Processing DB {db}...")
-
-    source_redis.select(db)
-    destination_redis.select(db)
-
-    source_keys = set(source_redis.scan_iter('*'))
-    destination_keys = set(destination_redis.scan_iter('*'))
-
-    missing_keys = sorted(source_keys - destination_keys)
-
-    print(f"   🔍 Source keys     : {len(source_keys)}")
-    print(f"   💾 Local keys      : {len(destination_keys)}")
-    print(f"   ❌ Missing to copy : {len(missing_keys)}")
-
-    total_missing += len(missing_keys)
-    copied = 0
-
-    for key in missing_keys:
-        try:
-            key_type = source_redis.type(key)
-            ttl = source_redis.ttl(key)
-
-            if key_type == 'string':
-                value = source_redis.get(key)
-                destination_redis.set(key, value)
-
-            elif key_type == 'hash':
-                value = source_redis.hgetall(key)
-                if value:
-                    destination_redis.hset(key, mapping=value)
-
-            elif key_type == 'set':
-                members = source_redis.smembers(key)
-                if members:
-                    destination_redis.sadd(key, *members)
-
-            elif key_type == 'zset':
-                zitems = source_redis.zrange(key, 0, -1, withscores=True)
-                if zitems:
-                    destination_redis.zadd(key, dict(zitems))
-
-            elif key_type == 'list':
-                items = source_redis.lrange(key, 0, -1)
-                if items:
-                    destination_redis.rpush(key, *items)
-
-            else:
-                print(f"   ⚠️ Skipping unsupported type '{key_type}' for key: {key}")
-                continue
-
-            if ttl and ttl > 0:
-                destination_redis.expire(key, ttl)
-
-            copied += 1
-
-        except Exception as e:
-            print(f"   ❌ Error copying '{key}': {e}")
-
-    total_copied += copied
-    print(f"   ✅ Copied {copied} keys from DB {db}.")
-
-print(f"\n🎯 Done. Total missing keys: {total_missing}, total copied: {total_copied}")
-
-[root@ip-172-31-35-246 ~]# ls
-comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
-[root@ip-172-31-35-246 ~]# cat verify_keys_in_local.py
-import redis
-
-# ----------- CONFIGURATION -----------
-LOCAL_REDIS = {
-    "host": "127.0.0.1",
-    "port": 6379,
-    "decode_responses": True
-}
-
-# ----------- List of Keys to Check -----------
-keys_to_check = [
-    "cabs.9278.live_details",
-    "cabs.9274.live_details",
-    "cabs.9272.live_details",
-    "cabs.9271.live_details",
-    "cabs.8954.live_details",
-    "cabs.8950.live_details",
-    "cabs.8945.live_details"
-]
-
-# ----------- Logic -----------
-local = redis.Redis(**LOCAL_REDIS)
-
-print("\n🔍 Searching for keys in local Redis (DBs 0–15)...\n")
-
-for key in keys_to_check:
-    found = False
-
-    for db in range(16):
-        local.select(db)
-        if local.exists(key):
-            print(f"✅ Found: {key} in DB {db}")
-            found = True
-            break
-
-    if not found:
-        print(f"❌ Missing: {key} (not found in any DB)")
-
-print("\n✅ Done.")
-
-[root@ip-172-31-35-246 ~]#
-```
-  
-</details>
