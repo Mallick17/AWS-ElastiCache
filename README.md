@@ -1763,3 +1763,135 @@ Each one should return:
 ```
 
 ---
+
+# To restore specific keys which is more than 20,000
+
+<details>
+  <summary>Click to view the steps</summary>
+
+### ✅ **Goal**
+
+You want a script that:
+
+* Reads keys from a file like `keys.txt`(where all the keys are stored which has to backed-up)
+* Connects to **all Redis DBs** (0–15)
+* Safely backs up data (even binary/unicode issues)
+* Preserves `type`, `value`, and `db`
+* Outputs to a safe JSON (`redis_backup.json`)
+* Handles unknown types cleanly
+* Can later be used to restore accurately
+
+---
+
+### ✅ **Final Backup Script (From `keys.txt`)**
+
+```python
+import redis
+import json
+import base64
+
+# Safe decoder to handle non-UTF8 data
+def safe_decode(value):
+    if isinstance(value, str):
+        return value
+    try:
+        return value.decode("utf-8")
+    except Exception:
+        return base64.b64encode(value).decode("ascii")
+
+# Read keys from file
+with open("keys.txt") as f:
+    keys_to_backup = [line.strip() for line in f if line.strip()]
+
+backup_data = {}
+
+# Try DBs 0–15
+for db_index in range(16):
+    r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
+
+    for key in keys_to_backup:
+        key_bytes = key.encode("utf-8") if isinstance(key, str) else key
+
+        if not r.exists(key_bytes):
+            continue
+
+        try:
+            key_type = r.type(key_bytes).decode()
+        except Exception:
+            print(f"⚠️ Error detecting type for key: {key}")
+            continue
+
+        key_decoded = safe_decode(key_bytes)
+
+        try:
+            if key_type == "string":
+                value = safe_decode(r.get(key_bytes))
+
+            elif key_type == "hash":
+                raw = r.hgetall(key_bytes)
+                value = {safe_decode(k): safe_decode(v) for k, v in raw.items()}
+
+            elif key_type == "set":
+                value = [safe_decode(v) for v in r.smembers(key_bytes)]
+
+            elif key_type == "zset":
+                value = [(safe_decode(v), score) for v, score in r.zrange(key_bytes, 0, -1, withscores=True)]
+
+            elif key_type == "list":
+                value = [safe_decode(v) for v in r.lrange(key_bytes, 0, -1)]
+
+            else:
+                print(f"⚠️ Unknown type for key: {key} (Type: {key_type})")
+                continue
+
+            backup_data[key_decoded] = {
+                "type": key_type,
+                "value": value,
+                "db": db_index
+            }
+
+        except Exception as e:
+            print(f"❌ Error processing key: {key} — {e}")
+
+# Save to JSON
+with open("redis_backup.json", "w") as f:
+    json.dump(backup_data, f, indent=2)
+
+print(f"✅ Backup complete. {len(backup_data)} keys saved to redis_backup.json.")
+```
+
+---
+
+### 📄 **Your `keys.txt` (example)**
+
+```
+cabs.9278.live_details
+cabs.9274.live_details
+cabs.9272.live_details
+cabs.9271.live_details
+cabs.8954.live_details
+cabs.8950.live_details
+cabs.8945.live_details
+```
+
+---
+
+### ✅ Benefits
+
+* No hardcoded keys
+* Works even if Redis data has binary or emoji characters
+* Clear logging of skipped/unknown/corrupt keys
+* Can later be restored with type, DB, and structure
+
+---
+
+### ⏭️ Next Step (Optional)
+
+If you want, I can also provide a matching **restore script** that:
+
+* Loads from `redis_backup.json`
+* Writes back to the correct DB
+* Converts values safely back (even from base64)
+
+  
+</details>
