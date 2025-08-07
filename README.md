@@ -358,3 +358,49 @@ You should see non-zero values confirming restore.
 ---
 
 # Installing Redis and taking backup of the single-single DB from Elasticache Redis to Redis Local Server
+
+
+
+---
+
+# To **clean (flush) the entire Redis database** on your local machine, you have two main options depending on whether you want to:
+
+
+### 🧹 1. **Flush a Single Database (e.g. DB 0)**
+
+```bash
+redis-cli FLUSHDB
+```
+
+This clears **only the currently selected database** (default is DB 0).
+
+To flush a specific DB, like DB 5:
+
+```bash
+redis-cli -n 5 FLUSHDB
+```
+
+---
+
+### 💣 2. **Flush All Databases (DB 0 to DB 15)**
+
+```bash
+redis-cli FLUSHALL
+```
+
+This **removes all keys from all databases**. Be very careful with this one.
+
+---
+
+### ✅ Optional: Confirm Redis is Clean
+
+After flushing, you can verify:
+
+```bash
+for i in {0..15}; do echo "DB $i:"; redis-cli -n $i dbsize; done
+```
+
+This will show `DB x: 0` for each DB if the flush was successful.
+
+---
+
