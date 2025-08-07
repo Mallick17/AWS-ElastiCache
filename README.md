@@ -502,6 +502,9 @@ Let me know if you want to:
 
 # To **clean (flush) the entire Redis database** on your local machine, you have two main options depending on whether you want to:
 
+<details>
+  <summary>Step by step To clean all the database</summary>
+
 
 ### 🧹 1. **Flush a Single Database (e.g. DB 0)**
 
@@ -538,6 +541,9 @@ for i in {0..15}; do echo "DB $i:"; redis-cli -n $i dbsize; done
 ```
 
 This will show `DB x: 0` for each DB if the flush was successful.
+
+
+</details>
 
 ---
 
@@ -894,6 +900,7 @@ if not found:
 
 </details>
 
+---
 
 <details>
   <summary>All the scripts to executed in the machine</summary>
@@ -1290,3 +1297,47 @@ print("\n✅ Done.")
 ```
   
 </details>
+
+---
+
+## 🔍 Workaround to Detect Active Databases
+- By default, Redis is configured with 16 logical databases (0–15). This is controlled by the `databases` setting in `redis.conf`.
+- However, in AWS ElastiCache, you cannot run `CONFIG GET databases` because administrative commands like `CONFIG`, `MONITOR`, etc. are blocked for security reasons.
+- Since CONFIG GET databases doesn't work, the best method is to probe each DB using a script:
+
+```
+for db in {0..15}; do
+  echo -n "DB $db: "
+  redis-cli -h <your-endpoint> -p 6379 -n $db dbsize
+done
+```
+
+or
+
+```
+for i in {0..15}; do echo "DB $i:"; redis-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $i dbsize; done
+```
+
+- Output Example
+  
+```
+[root@ip-172-31-35-246 ~]# for db in {0..15}; do   echo -n "DB $db: ";   redis-cli -h <your-endpoint>.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $db dbsize; done
+DB 0: (integer) 637
+DB 1: (integer) 502
+DB 2: (integer) 1325
+DB 3: (integer) 3650
+DB 4: (integer) 394
+DB 5: (integer) 13418
+DB 6: (integer) 2
+DB 7: (integer) 0
+DB 8: (integer) 0
+DB 9: (integer) 0
+DB 10: (integer) 0
+DB 11: (integer) 0
+DB 12: (integer) 0
+DB 13: (integer) 0
+DB 14: (integer) 0
+DB 15: (integer) 0
+```
+
+> Replace <your-endpoint> with your actual ElastiCache endpoint (without redis:// prefix).
