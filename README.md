@@ -1396,3 +1396,96 @@ print("✅ Backup complete. Saved to redis_backup.json")
   - `python3 backup_selected_keys.py`
 
 ---
+
+### Step 2: Loop through all Redis DBs (0 to 15) to delete specified keys
+- `vi delete_selected_keys.py`
+
+```python
+import redis
+
+# Connect to local Redis (loop through all DBs)
+keys_to_delete = [
+    "cabs.9278.live_details", "cabs.9274.live_details", "cabs.9272.live_details",
+    "cabs.9271.live_details", "cabs.8954.live_details", "cabs.8950.live_details", "cabs.8945.live_details"
+]
+
+# Loop through DBs 0 to 15 (default max)
+for db_index in range(16):
+    r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
+    print(f"\n🔍 Checking DB {db_index}...")
+    found_keys = []
+
+    for key in keys_to_delete:
+        if r.exists(key):
+            found_keys.append(key)
+
+    if found_keys:
+        print(f"🗑️ Found {len(found_keys)} key(s) in DB {db_index}. Deleting...")
+        r.delete(*found_keys)
+        print(f"✅ Deleted keys from DB {db_index}: {found_keys}")
+    else:
+        print("⚠️ No matching keys found.")
+```
+
+- Execute the Script
+`python3 delete_selected_keys.py`
+
+- Expected Output
+  
+<details>
+  <summary>Click to view the output</summary>
+
+```
+
+🔍 Checking DB 0...
+⚠️ No matching keys found.
+
+🔍 Checking DB 1...
+⚠️ No matching keys found.
+
+🔍 Checking DB 2...
+⚠️ No matching keys found.
+
+🔍 Checking DB 3...
+⚠️ No matching keys found.
+
+🔍 Checking DB 4...
+⚠️ No matching keys found.
+
+🔍 Checking DB 5...
+🗑️ Found 7 key(s) in DB 5. Deleting...
+✅ Deleted keys from DB 5: ['cabs.9278.live_details', 'cabs.9274.live_details', 'cabs.9272.live_details', 'cabs.9271.live_details', 'cabs.8954.live_details', 'cabs.8950.live_details', 'cabs.8945.live_details']
+
+🔍 Checking DB 6...
+⚠️ No matching keys found.
+
+🔍 Checking DB 7...
+⚠️ No matching keys found.
+
+🔍 Checking DB 8...
+⚠️ No matching keys found.
+
+🔍 Checking DB 9...
+⚠️ No matching keys found.
+
+🔍 Checking DB 10...
+⚠️ No matching keys found.
+
+🔍 Checking DB 11...
+⚠️ No matching keys found.
+
+🔍 Checking DB 12...
+⚠️ No matching keys found.
+
+🔍 Checking DB 13...
+⚠️ No matching keys found.
+
+🔍 Checking DB 14...
+⚠️ No matching keys found.
+
+🔍 Checking DB 15...
+⚠️ No matching keys found.
+```
+
+</details>
+  
