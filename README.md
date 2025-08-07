@@ -895,4 +895,398 @@ if not found:
 </details>
 
 
+<details>
+  <summary>All the scripts to executed in the machine</summary>
 
+```
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat comparesync.py
+import redis
+
+# --- Connect to ElastiCache Redis (source) ---
+source_redis = redis.Redis(
+    host='<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+# --- Connect to Local Redis (destination) ---
+destination_redis = redis.Redis(
+    host='127.0.0.1',
+    port=6379,
+    decode_responses=True
+)
+
+# --- Fetch all keys from both Redis ---
+print("🔄 Fetching keys from both Redis instances...")
+source_keys = set(source_redis.scan_iter('*'))
+destination_keys = set(destination_redis.scan_iter('*'))
+
+# --- Calculate missing keys ---
+missing_keys = sorted(source_keys - destination_keys)
+
+print(f"\n📦 Total source keys      : {len(source_keys)}")
+print(f"💾 Total local keys       : {len(destination_keys)}")
+print(f"❌ Missing keys to sync   : {len(missing_keys)}")
+
+# --- Copy missing keys ---
+copied = 0
+for key in missing_keys:
+    try:
+        key_type = source_redis.type(key)
+        ttl = source_redis.ttl(key)
+
+        if key_type == 'string':
+            value = source_redis.get(key)
+            destination_redis.set(key, value)
+
+        elif key_type == 'hash':
+            value = source_redis.hgetall(key)
+            if value:
+                destination_redis.hset(key, mapping=value)
+
+        elif key_type == 'set':
+            members = source_redis.smembers(key)
+            if members:
+                destination_redis.sadd(key, *members)
+
+        elif key_type == 'zset':
+            zitems = source_redis.zrange(key, 0, -1, withscores=True)
+            if zitems:
+                destination_redis.zadd(key, dict(zitems))
+
+        elif key_type == 'list':
+            items = source_redis.lrange(key, 0, -1)
+            if items:
+                destination_redis.rpush(key, *items)
+
+        else:
+            print(f"⚠️ Skipping unsupported type '{key_type}' for key: {key}")
+            continue
+
+        # Set TTL if exists
+        if ttl and ttl > 0:
+            destination_redis.expire(key, ttl)
+
+        copied += 1
+
+    except Exception as e:
+        print(f"❌ Error copying '{key}': {e}")
+
+print(f"\n✅ Copied {copied} missing keys.")
+
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat dump_db_safe.py
+# dump_db_safe.py
+import redis
+import json
+import base64
+
+HOST = '<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com'
+PORT = 6379
+DB_INDEX = 6  # change this to target a single DB
+
+def safe_encode(value):
+    try:
+        json.dumps(value)
+        return {'encoding': 'plain', 'data': value}
+    except (TypeError, UnicodeDecodeError):
+        return {'encoding': 'base64', 'data': base64.b64encode(value.encode() if isinstance(value, str) else value).decode()}
+
+def dump_db(db_index):
+    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index, decode_responses=False)
+    keys = r.keys('*')
+    data = {}
+    for key in keys:
+        key_str = key.decode('utf-8', errors='replace')
+        key_type = r.type(key).decode()
+        if key_type == 'string':
+            val = r.get(key)
+            data[key_str] = {'type': 'string', 'value': safe_encode(val)}
+        elif key_type == 'hash':
+            val = {k.decode(): v.decode(errors='replace') for k, v in r.hgetall(key).items()}
+            data[key_str] = {'type': 'hash', 'value': val}
+        elif key_type == 'list':
+            val = [v.decode(errors='replace') for v in r.lrange(key, 0, -1)]
+            data[key_str] = {'type': 'list', 'value': val}
+        elif key_type == 'set':
+            val = [v.decode(errors='replace') for v in r.smembers(key)]
+            data[key_str] = {'type': 'set', 'value': val}
+        elif key_type == 'zset':
+            val = [(v.decode(errors='replace'), s) for v, s in r.zrange(key, 0, -1, withscores=True)]
+            data[key_str] = {'type': 'zset', 'value': val}
+    with open(f'dump_db_{db_index}.json', 'w') as f:
+        json.dump(data, f, indent=2)
+
+if __name__ == "__main__":
+    print(f'Dumping DB {DB_INDEX}...')
+    dump_db(DB_INDEX)
+    print('✅ Dumped dump_db_{DB_INDEX}.json')
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat redis_key_verifier.py
+import redis
+from typing import List
+
+# ----------- CONFIGURATION -----------
+SOURCE_REDIS = {
+    "host": "<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com",
+    "port": 6379,
+    "db": 0,
+    "decode_responses": True
+}
+
+LOCAL_REDIS = {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "db": 0,
+    "decode_responses": True
+}
+
+# ---------- INIT CONNECTIONS ----------
+source = redis.Redis(**SOURCE_REDIS)
+local = redis.Redis(**LOCAL_REDIS)
+
+
+# ---------- VERIFY ALL KEYS ----------
+def verify_all_keys_across_dbs():
+    print("\n🔍 Verifying ALL keys across DBs 0–15...\n")
+    for db in range(16):
+        source.select(db)
+        local.select(db)
+
+        source_keys = set(source.scan_iter("*"))
+        local_keys = set(local.scan_iter("*"))
+
+        print(f"📂 DB {db}: {len(source_keys)} keys in source, {len(local_keys)} in local")
+
+        missing_keys = source_keys - local_keys
+        extra_keys = local_keys - source_keys
+
+        if missing_keys:
+            print(f"❌ Missing in LOCAL (DB {db}):")
+            for key in missing_keys:
+                print(f"   - {key}")
+        if extra_keys:
+            print(f"⚠️ Extra in LOCAL not in source (DB {db}):")
+            for key in extra_keys:
+                print(f"   - {key}")
+    print("\n✅ Verification complete.")
+
+
+# ---------- VERIFY SPECIFIC KEYS ----------
+def verify_specific_keys(keys: List[str]):
+    print(f"\n🔍 Verifying specific keys across DBs 0–15...\n")
+
+    for key in keys:
+        found_in_source = False
+        found_in_local = False
+
+        for db in range(16):
+            source.select(db)
+            if source.exists(key):
+                print(f"✅ Key '{key}' found in SOURCE Redis DB {db}")
+                found_in_source = True
+                break
+
+        for db in range(16):
+            local.select(db)
+            if local.exists(key):
+                print(f"✅ Key '{key}' found in LOCAL Redis DB {db}")
+                found_in_local = True
+                break
+
+        if not found_in_source:
+            print(f"❌ Key '{key}' NOT found in SOURCE Redis")
+        if not found_in_local:
+            print(f"❌ Key '{key}' NOT found in LOCAL Redis")
+
+
+# ---------- MAIN ENTRY ----------
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Redis DB Key Verifier")
+    parser.add_argument("--all", action="store_true", help="Check all DBs and keys")
+    parser.add_argument("--keys", nargs="+", help="List of keys to verify")
+
+    args = parser.parse_args()
+
+    if args.all:
+        verify_all_keys_across_dbs()
+    elif args.keys:
+        verify_specific_keys(args.keys)
+    else:
+        parser.print_help()
+
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat restore_db_safe.py
+# restore_db_safe.py
+import redis
+import json
+import base64
+
+DB_INDEX = 6  # same as exported DB
+
+def decode_value(val_obj):
+    if isinstance(val_obj, dict) and val_obj.get('encoding') == 'base64':
+        return base64.b64decode(val_obj['data']).decode(errors='replace')
+    return val_obj['data']
+
+def restore_db(db_index):
+    with open(f'dump_db_{db_index}.json') as f:
+        data = json.load(f)
+    r = redis.StrictRedis(host='localhost', port=6379, db=db_index, decode_responses=True)
+    for key, item in data.items():
+        t = item['type']
+        v = item['value']
+        if t == 'string':
+            r.set(key, decode_value(v))
+        elif t == 'hash':
+            r.hset(key, mapping=v)
+        elif t == 'list':
+            r.rpush(key, *v)
+        elif t == 'set':
+            r.sadd(key, *v)
+        elif t == 'zset':
+            r.zadd(key, {k: s for k, s in v})
+    print(f'✅ Restored DB {db_index}')
+
+if __name__ == "__main__":
+    restore_db(DB_INDEX)
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat sync_all_dbs.py
+import redis
+
+# --- Connect to ElastiCache Redis (source) ---
+source_redis = redis.Redis(
+    host='<your-elasticache-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com',
+    port=6379,
+    decode_responses=True
+)
+
+# --- Connect to Local Redis (destination) ---
+destination_redis = redis.Redis(
+    host='127.0.0.1',
+    port=6379,
+    decode_responses=True
+)
+
+total_missing = 0
+total_copied = 0
+
+for db in range(16):
+    print(f"\n📂 Processing DB {db}...")
+
+    source_redis.select(db)
+    destination_redis.select(db)
+
+    source_keys = set(source_redis.scan_iter('*'))
+    destination_keys = set(destination_redis.scan_iter('*'))
+
+    missing_keys = sorted(source_keys - destination_keys)
+
+    print(f"   🔍 Source keys     : {len(source_keys)}")
+    print(f"   💾 Local keys      : {len(destination_keys)}")
+    print(f"   ❌ Missing to copy : {len(missing_keys)}")
+
+    total_missing += len(missing_keys)
+    copied = 0
+
+    for key in missing_keys:
+        try:
+            key_type = source_redis.type(key)
+            ttl = source_redis.ttl(key)
+
+            if key_type == 'string':
+                value = source_redis.get(key)
+                destination_redis.set(key, value)
+
+            elif key_type == 'hash':
+                value = source_redis.hgetall(key)
+                if value:
+                    destination_redis.hset(key, mapping=value)
+
+            elif key_type == 'set':
+                members = source_redis.smembers(key)
+                if members:
+                    destination_redis.sadd(key, *members)
+
+            elif key_type == 'zset':
+                zitems = source_redis.zrange(key, 0, -1, withscores=True)
+                if zitems:
+                    destination_redis.zadd(key, dict(zitems))
+
+            elif key_type == 'list':
+                items = source_redis.lrange(key, 0, -1)
+                if items:
+                    destination_redis.rpush(key, *items)
+
+            else:
+                print(f"   ⚠️ Skipping unsupported type '{key_type}' for key: {key}")
+                continue
+
+            if ttl and ttl > 0:
+                destination_redis.expire(key, ttl)
+
+            copied += 1
+
+        except Exception as e:
+            print(f"   ❌ Error copying '{key}': {e}")
+
+    total_copied += copied
+    print(f"   ✅ Copied {copied} keys from DB {db}.")
+
+print(f"\n🎯 Done. Total missing keys: {total_missing}, total copied: {total_copied}")
+
+[root@ip-172-31-35-246 ~]# ls
+comparesync.py  dump1  dump_db_safe.py  elasticache_backup  key_dumps  redisenv  redis_key_verifier.py  redis-stable  restore_db_safe.py  roughfolder  sync_all_dbs.py  verify_keys_in_local.py
+[root@ip-172-31-35-246 ~]# cat verify_keys_in_local.py
+import redis
+
+# ----------- CONFIGURATION -----------
+LOCAL_REDIS = {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "decode_responses": True
+}
+
+# ----------- List of Keys to Check -----------
+keys_to_check = [
+    "cabs.9278.live_details",
+    "cabs.9274.live_details",
+    "cabs.9272.live_details",
+    "cabs.9271.live_details",
+    "cabs.8954.live_details",
+    "cabs.8950.live_details",
+    "cabs.8945.live_details"
+]
+
+# ----------- Logic -----------
+local = redis.Redis(**LOCAL_REDIS)
+
+print("\n🔍 Searching for keys in local Redis (DBs 0–15)...\n")
+
+for key in keys_to_check:
+    found = False
+
+    for db in range(16):
+        local.select(db)
+        if local.exists(key):
+            print(f"✅ Found: {key} in DB {db}")
+            found = True
+            break
+
+    if not found:
+        print(f"❌ Missing: {key} (not found in any DB)")
+
+print("\n✅ Done.")
+
+[root@ip-172-31-35-246 ~]#
+```
+  
+</details>
