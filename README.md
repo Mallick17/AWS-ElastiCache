@@ -1417,7 +1417,7 @@ done
 or
 
 ```
-for i in {0..15}; do echo "DB $i:"; redis-cli -h redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $i dbsize; done
+for i in {0..15}; do echo "DB $i:"; redis-cli -h <your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com -p 6379 -n $i dbsize; done
 ```
 
 - Output Example
@@ -1917,7 +1917,7 @@ import os
 from datetime import datetime
 
 # Config
-REDIS_HOST = "redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_HOST = "<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
 REDIS_PORT = 6379
 KEY_FILE = "keys.txt"
 OUTPUT_DIR = "backup_output"
