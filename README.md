@@ -1489,3 +1489,71 @@ for db_index in range(16):
 
 </details>
   
+---
+
+### Step 3: Verify those keys weather its Present or not
+
+### Step by step checking all the keys
+
+```bash
+127.0.0.1:6379> select 5
+OK
+127.0.0.1:6379[5]> exists cabs.9278.live_details
+(integer) 0
+```
+
+That means:
+➡️ `cabs.9278.live_details` does **not** exist in **DB 5** anymore.
+
+### 🔁 To Verify All Deleted Keys (Manually)
+
+Repeat for each of the deleted keys:
+
+```bash
+127.0.0.1:6379[5]> exists cabs.9274.live_details
+127.0.0.1:6379[5]> exists cabs.9272.live_details
+127.0.0.1:6379[5]> exists cabs.9271.live_details
+127.0.0.1:6379[5]> exists cabs.8954.live_details
+127.0.0.1:6379[5]> exists cabs.8950.live_details
+127.0.0.1:6379[5]> exists cabs.8945.live_details
+```
+
+Each one should return:
+
+```
+(integer) 0
+```
+
+### Alternate: Python Script to Confirm
+
+You can use this short verification script:
+
+```python
+import redis
+
+keys_to_check = [
+    "cabs.9278.live_details", "cabs.9274.live_details", "cabs.9272.live_details",
+    "cabs.9271.live_details", "cabs.8954.live_details", "cabs.8950.live_details", "cabs.8945.live_details"
+]
+
+for db in range(16):
+    r = redis.StrictRedis(host='localhost', port=6379, db=db)
+    found = [key for key in keys_to_check if r.exists(key)]
+    if found:
+        print(f"❌ Found in DB {db}: {found}")
+    else:
+        print(f"✅ DB {db}: None of the keys exist.")
+```
+
+Run:
+
+```bash
+python3 verify_deleted_keys.py
+```
+
+### ✅ Final Notes
+
+* `exists cabs` returning 1 means there's **another key** just called `cabs` — totally unrelated.
+* Your deleted keys are confirmed **gone** when `exists` returns 0.
+
+---
