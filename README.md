@@ -1769,6 +1769,7 @@ Each one should return:
 <details>
   <summary>Click to view the steps</summary>
 
+## From Local Redis Server taking Backup
 ### ✅ **Goal**
 
 You want a script that:
@@ -1893,5 +1894,141 @@ If you want, I can also provide a matching **restore script** that:
 * Writes back to the correct DB
 * Converts values safely back (even from base64)
 
+
+---
+---
+
+## From Elasticache taking backup
+* Use a `keys.txt` file to specify keys to back up.
+* Connect to your **ElastiCache endpoint**.
+* Save the backup into a uniquely named file inside a separate folder (`backup_output/`).
+* Handle **non-UTF8 data** using base64.
+* Search across **databases 0–15**, though ElastiCache typically uses only **DB 0** unless cluster mode is enabled.
+
+---
+
+### ✅ Final Python Script: `elasticache_key_backup.py`
+
+```python
+import redis
+import json
+import base64
+import os
+from datetime import datetime
+
+# Config
+REDIS_HOST = "redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_PORT = 6379
+KEY_FILE = "keys.txt"
+OUTPUT_DIR = "backup_output"
+
+# Safe decoder to handle non-UTF8 data
+def safe_decode(value):
+    if isinstance(value, str):
+        return value
+    try:
+        return value.decode("utf-8")
+    except Exception:
+        return base64.b64encode(value).decode("ascii")
+
+# Read keys from file
+with open(KEY_FILE) as f:
+    keys_to_backup = [line.strip() for line in f if line.strip()]
+
+backup_data = {}
+
+# Ensure output directory exists
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Generate output filename
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_file = os.path.join(OUTPUT_DIR, f"redis_backup_{timestamp}.json")
+
+# Loop through Redis DBs (0–15)
+for db_index in range(16):
+    print(f"🔍 Checking DB {db_index}...")
+    try:
+        r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=db_index, socket_connect_timeout=5)
+
+        for key in keys_to_backup:
+            key_bytes = key.encode("utf-8") if isinstance(key, str) else key
+
+            if not r.exists(key_bytes):
+                continue
+
+            try:
+                key_type = r.type(key_bytes).decode()
+            except Exception:
+                print(f"⚠️ Error detecting type for key: {key}")
+                continue
+
+            key_decoded = safe_decode(key_bytes)
+
+            try:
+                if key_type == "string":
+                    value = safe_decode(r.get(key_bytes))
+
+                elif key_type == "hash":
+                    raw = r.hgetall(key_bytes)
+                    value = {safe_decode(k): safe_decode(v) for k, v in raw.items()}
+
+                elif key_type == "set":
+                    value = [safe_decode(v) for v in r.smembers(key_bytes)]
+
+                elif key_type == "zset":
+                    value = [(safe_decode(v), score) for v, score in r.zrange(key_bytes, 0, -1, withscores=True)]
+
+                elif key_type == "list":
+                    value = [safe_decode(v) for v in r.lrange(key_bytes, 0, -1)]
+
+                else:
+                    print(f"⚠️ Unknown type for key: {key} (Type: {key_type})")
+                    continue
+
+                backup_data[key_decoded] = {
+                    "type": key_type,
+                    "value": value,
+                    "db": db_index
+                }
+
+            except Exception as e:
+                print(f"❌ Error processing key: {key} — {e}")
+
+    except Exception as conn_err:
+        print(f"🚫 Could not connect to DB {db_index}: {conn_err}")
+        continue
+
+# Save to JSON
+with open(output_file, "w") as f:
+    json.dump(backup_data, f, indent=2)
+
+print(f"\n✅ Backup complete. {len(backup_data)} keys saved to {output_file}")
+```
+
+---
+
+### ✅ Instructions
+
+1. **Create `keys.txt`** with one Redis key per line, for example:
+
+   ```
+   cabs.9278.live_details
+   cabs.8954.live_details
+   cabs.8950.live_details
+   ```
+
+2. **Run the script:**
+
+   ```bash
+   python3 elasticache_key_backup.py
+   ```
+
+3. **Result:**
+
+   * A file like `backup_output/redis_backup_20250807_164255.json` is created.
+   * It contains all found keys with correct types and values.
+   * Handles all Redis types: `string`, `hash`, `set`, `zset`, and `list`.
+
+---
   
 </details>
