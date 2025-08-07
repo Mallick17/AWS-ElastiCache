@@ -715,7 +715,7 @@ print(f"\n✅ Copied {copied} missing keys.")
 
 ---
 
-# To verify all the keys in the local weather it is present or not
+# To verify all the keys or the specific keys weather it is present or not
 
 <details>
   <summary>Click here to view step by step guide</summary>
@@ -792,6 +792,102 @@ print("\n✅ Done.")
 ✅ Found: cabs.9274.live_details in DB 0
 ❌ Missing: cabs.9271.live_details (not found in any DB)
 ```
+
+---
+
+### 🔎 **To verify which DB a key exists in — on *Elasticache Redis only* — and report missing ones**
+
+### ✅ Assumptions
+
+* Your **ElastiCache Redis endpoint** is available (e.g., `my-cluster.cache.amazonaws.com`)
+* You have network access (e.g., from an EC2 instance in the same VPC)
+* You want to check **specific keys** across **all DBs (0–15)**
+
+---
+
+### ✅ Python Script: `verify_keys_elasticache.py`
+
+```python
+import redis
+
+# -------------------- Configuration --------------------
+ELASTICACHE_REDIS = {
+    "host": "<your-elasticache-endpoint>",  # Replace with your endpoint
+    "port": 6379,
+    "decode_responses": True
+}
+
+# -------------------- Keys to Check --------------------
+keys_to_check = [
+    "cabs.9278.live_details",
+    "cabs.9274.live_details",
+    "cabs.9272.live_details",
+    "cabs.9271.live_details",
+    "cabs.8954.live_details",
+    "cabs.8950.live_details",
+    "cabs.8945.live_details"
+]
+
+# -------------------- Script --------------------
+elasticache = redis.Redis(**ELASTICACHE_REDIS)
+
+print("\n🔍 Searching for keys in ElastiCache Redis (DBs 0–15)...\n")
+
+for key in keys_to_check:
+    found = False
+
+    for db in range(16):
+        try:
+            elasticache.execute_command('SELECT', db)
+            if elasticache.exists(key):
+                print(f"✅ Found: {key} in DB {db}")
+                found = True
+                break
+        except Exception as e:
+            print(f"⚠️ Error checking DB {db}: {e}")
+
+    if not found:
+        print(f"❌ Missing: {key} (not found in any DB)")
+
+print("\n✅ Done.")
+```
+
+---
+
+### 🔁 Replace `<your-elasticache-endpoint>`:
+
+Use the full host name (e.g.):
+
+```python
+"host": "my-elasticache-name.abc123.ng.0001.aps1.cache.amazonaws.com"
+```
+
+---
+
+### 🧪 Optional: Check Single Key Only
+
+You can also adapt the code to check a single key like this:
+
+```python
+key = "cabs.9278.live_details"
+found = False
+for db in range(16):
+    elasticache.execute_command('SELECT', db)
+    if elasticache.exists(key):
+        print(f"Found in DB {db}")
+        found = True
+        break
+if not found:
+    print("Key not found in any DB")
+```
+
+---
+
+### ❗Important Notes
+
+* ElastiCache is single-threaded — avoid heavy scans in production.
+* `SELECT` is allowed on ElastiCache **if cluster mode is disabled**.
+* For **cluster-mode enabled**: keys are sharded — `SELECT` won't work. Let me know if this is your case.
 
 ---
 
