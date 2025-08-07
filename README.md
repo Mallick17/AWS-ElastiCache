@@ -541,3 +541,102 @@ This will show `DB x: 0` for each DB if the flush was successful.
 
 ---
 
+# How to find missing keys in elasticache
+
+<details>
+  <summary>Click to view step by step guide</summary>
+
+To **find which Redis keys are missing** during migration from ElastiCache to local Redis and ensure **no data loss**, you need to compare the keys in each DB *before and after* transfer.
+
+Here's a step-by-step plan to help you **identify the missing keys** and ensure **all keys from ElastiCache are restored locally**.
+
+---
+
+### ✅ Step 1: Export all keys from each DB in ElastiCache
+
+Use this script to **export just the keys** from each DB:
+
+```python
+# dump_keys_elasticache.py
+
+import redis
+import json
+
+HOST = 'redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com'
+PORT = 6379
+MAX_DB = 6  # adjust to the max DB index you want to compare
+
+for db in range(MAX_DB + 1):
+    r = redis.Redis(host=HOST, port=PORT, db=db)
+    keys = r.keys('*')
+    keys = [k.decode('utf-8') for k in keys]
+    
+    with open(f'elasticache_db_{db}_keys.json', 'w') as f:
+        json.dump(keys, f, indent=2)
+
+    print(f"✅ Exported {len(keys)} keys from DB {db}")
+```
+
+---
+
+### ✅ Step 2: Export all keys from each DB in **local Redis**
+
+```python
+# dump_keys_local.py
+
+import redis
+import json
+
+HOST = 'localhost'
+PORT = 6379
+MAX_DB = 6  # change based on how many DBs you have
+
+for db in range(MAX_DB + 1):
+    r = redis.Redis(host=HOST, port=PORT, db=db)
+    keys = r.keys('*')
+    keys = [k.decode('utf-8') for k in keys]
+    
+    with open(f'local_db_{db}_keys.json', 'w') as f:
+        json.dump(keys, f, indent=2)
+
+    print(f"✅ Exported {len(keys)} keys from local DB {db}")
+```
+
+---
+
+### ✅ Step 3: Compare Elasticache vs Local Keys
+
+Now run a simple comparison:
+
+```python
+# compare_keys.py
+
+import json
+
+MAX_DB = 6
+
+for db in range(MAX_DB + 1):
+    with open(f'elasticache_db_{db}_keys.json') as f1, open(f'local_db_{db}_keys.json') as f2:
+        elastic_keys = set(json.load(f1))
+        local_keys = set(json.load(f2))
+
+        missing_keys = elastic_keys - local_keys
+
+        if missing_keys:
+            print(f"❌ DB {db} - {len(missing_keys)} keys missing:")
+            for key in list(missing_keys)[:10]:  # show first 10 only
+                print(f"   - {key}")
+        else:
+            print(f"✅ DB {db} - All keys are present.")
+```
+
+---
+
+### ✅ Step 4: Restore Missing Keys Only (Optional)
+
+Once you've identified the missing keys, you can restore just them using a targeted script.
+
+---
+
+  
+</details>
