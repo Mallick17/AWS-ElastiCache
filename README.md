@@ -359,6 +359,143 @@ You should see non-zero values confirming restore.
 
 # Installing Redis and taking backup of the single-single DB from Elasticache Redis to Redis Local Server
 
+<details>
+  <summary>Click to view Step-by-Step Plan</summary>
+
+Got it — since you're losing some keys when exporting entire DBs in bulk, the best approach is to **isolate and export/restore one Redis DB at a time**, with full type safety and encoding support (e.g., base64 when needed).
+
+---
+
+### ✅ Step-by-Step Plan (Single DB at a Time)
+
+---
+
+#### **1. Export a Single Redis DB Safely (ElastiCache → JSON)**
+
+Here’s a script that dumps a single DB with proper key type handling and base64 fallback for binary/unicode-safe export:
+
+```python
+# dump_db_safe.py
+import redis
+import json
+import base64
+
+HOST = 'your-elasticache-endpoint'
+PORT = 6379
+DB_INDEX = 0  # change this to target a single DB
+
+def safe_encode(value):
+    try:
+        json.dumps(value)
+        return {'encoding': 'plain', 'data': value}
+    except (TypeError, UnicodeDecodeError):
+        return {'encoding': 'base64', 'data': base64.b64encode(value.encode() if isinstance(value, str) else value).decode()}
+
+def dump_db(db_index):
+    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index, decode_responses=False)
+    keys = r.keys('*')
+    data = {}
+    for key in keys:
+        key_str = key.decode('utf-8', errors='replace')
+        key_type = r.type(key).decode()
+        if key_type == 'string':
+            val = r.get(key)
+            data[key_str] = {'type': 'string', 'value': safe_encode(val)}
+        elif key_type == 'hash':
+            val = {k.decode(): v.decode(errors='replace') for k, v in r.hgetall(key).items()}
+            data[key_str] = {'type': 'hash', 'value': val}
+        elif key_type == 'list':
+            val = [v.decode(errors='replace') for v in r.lrange(key, 0, -1)]
+            data[key_str] = {'type': 'list', 'value': val}
+        elif key_type == 'set':
+            val = [v.decode(errors='replace') for v in r.smembers(key)]
+            data[key_str] = {'type': 'set', 'value': val}
+        elif key_type == 'zset':
+            val = [(v.decode(errors='replace'), s) for v, s in r.zrange(key, 0, -1, withscores=True)]
+            data[key_str] = {'type': 'zset', 'value': val}
+    with open(f'dump_db_{db_index}.json', 'w') as f:
+        json.dump(data, f, indent=2)
+
+if __name__ == "__main__":
+    print(f'Dumping DB {DB_INDEX}...')
+    dump_db(DB_INDEX)
+    print('✅ Dumped dump_db_{DB_INDEX}.json')
+```
+
+---
+
+#### **2. Restore to Local Redis (One DB at a Time)**
+
+This matches the dump format and decodes base64 if needed:
+
+```python
+# restore_db_safe.py
+import redis
+import json
+import base64
+
+DB_INDEX = 0  # same as exported DB
+
+def decode_value(val_obj):
+    if isinstance(val_obj, dict) and val_obj.get('encoding') == 'base64':
+        return base64.b64decode(val_obj['data']).decode(errors='replace')
+    return val_obj['data']
+
+def restore_db(db_index):
+    with open(f'dump_db_{db_index}.json') as f:
+        data = json.load(f)
+    r = redis.StrictRedis(host='localhost', port=6379, db=db_index, decode_responses=True)
+    for key, item in data.items():
+        t = item['type']
+        v = item['value']
+        if t == 'string':
+            r.set(key, decode_value(v))
+        elif t == 'hash':
+            r.hset(key, mapping=v)
+        elif t == 'list':
+            r.rpush(key, *v)
+        elif t == 'set':
+            r.sadd(key, *v)
+        elif t == 'zset':
+            r.zadd(key, {k: s for k, s in v})
+    print(f'✅ Restored DB {db_index}')
+
+if __name__ == "__main__":
+    restore_db(DB_INDEX)
+```
+
+---
+
+### ✅ How to Run for Specific DB
+
+1. To export DB 3, update:
+
+```python
+DB_INDEX = 3
+```
+
+Run:
+
+```bash
+python dump_db_safe.py
+```
+
+2. To restore to local:
+
+```bash
+python restore_db_safe.py
+```
+
+---
+
+Let me know if you want to:
+
+* Export/restore only specific **keys** inside the DB (rather than full DB),
+* Do a **batch script** for multiple DBs one by one, or
+* Have a `.sh` wrapper to automate this process.
+
+  
+</details>
 
 
 ---
