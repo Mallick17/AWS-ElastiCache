@@ -357,6 +357,108 @@ You should see non-zero values confirming restore.
 
 ---
 
+# Taking backup of the entire 16 DB's from Local Redis Local Server
+
+<details>
+  <summary>Click to view Step-by-Step Plan</summary>
+
+### ✅ **Changes made:**
+
+1. **Backs up all Redis DBs** (0–6 by default).
+2. **Creates a local folder** (e.g., `redis_backups/`) if it doesn't exist.
+3. **Stores each DB's JSON file** as `dump_db_<n>.json` inside the backup folder.
+4. **Works on local Redis** (`localhost:6379`) by default.
+
+### 🔧 **Modified Script**
+
+```python
+import redis
+import json
+import base64
+import os
+from datetime import datetime
+
+# CONFIG
+HOST = 'localhost'   # Change if needed
+PORT = 6379
+DB_RANGE = range(0, 7)
+BACKUP_DIR = 'redis_backups'
+
+def safe_decode(value):
+    try:
+        return value.decode('utf-8')
+    except Exception:
+        return base64.b64encode(value).decode('ascii')
+
+def dump_db(db_index):
+    r = redis.StrictRedis(host=HOST, port=PORT, db=db_index)
+    keys = r.keys('*')
+    data = {}
+
+    for key in keys:
+        try:
+            key_decoded = safe_decode(key)
+            key_type = r.type(key)
+            if key_type == b'string':
+                val = r.get(key)
+                data[key_decoded] = {'type': 'string', 'value': safe_decode(val)}
+            elif key_type == b'hash':
+                hash_data = r.hgetall(key)
+                data[key_decoded] = {
+                    'type': 'hash',
+                    'value': {safe_decode(k): safe_decode(v) for k, v in hash_data.items()}
+                }
+            elif key_type == b'list':
+                list_data = r.lrange(key, 0, -1)
+                data[key_decoded] = {'type': 'list', 'value': [safe_decode(i) for i in list_data]}
+            elif key_type == b'set':
+                set_data = r.smembers(key)
+                data[key_decoded] = {'type': 'set', 'value': [safe_decode(i) for i in set_data]}
+            elif key_type == b'zset':
+                zset_data = r.zrange(key, 0, -1, withscores=True)
+                data[key_decoded] = {'type': 'zset', 'value': [{'member': safe_decode(i[0]), 'score': i[1]} for i in zset_data]}
+        except Exception as e:
+            print(f"❌ Error dumping key {key}: {e}")
+
+    # Create backup folder if not exists
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    filename = os.path.join(BACKUP_DIR, f'dump_db_{db_index}.json')
+
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=2)
+
+if __name__ == "__main__":
+    print(f"🔁 Starting Redis backup into '{BACKUP_DIR}' ...")
+    for db_index in DB_RANGE:
+        print(f'📦 Dumping DB {db_index}...')
+        dump_db(db_index)
+    print('✅ All Redis databases backed up successfully.')
+```
+
+### 📂 Output:
+
+This will create a folder structure like:
+
+```
+redis_backups/
+  ├── dump_db_0.json
+  ├── dump_db_1.json
+  ├── ...
+  └── dump_db_6.json
+```
+
+### 🧪 Optional test
+
+```bash
+ls -lh redis_backups/
+cat redis_backups/dump_db_0.json | jq '. | keys'
+```
+
+</details>
+
+
+---
+
 # Installing Redis and taking backup of the single-single DB from Elasticache Redis to Redis Local Server
 
 <details>
