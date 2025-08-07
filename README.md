@@ -1,7 +1,15 @@
-# Installing Redis and Copying the entire DB from Elasticache Redis to Redis Local Server
+# Installing Redis and taking backup of the DB from Elasticache Redis to Redis Local Server
 
 ---
+### **🧰 Prerequisites**
 
+Ensure the following are ready on your Linux system:
+
+* `redis-cli` installed
+* Python 3.7+ installed
+* AWS ElastiCache Redis **endpoint** accessible from your instance (i.e., no VPC access restriction)
+* Local Redis server installed (default: single node, 16 DBs)
+  
 ### ✅ Option 1: Install Redis via Amazon Linux 2 Extra Repository
 
 ```bash
@@ -47,9 +55,13 @@ And run your restore script — it will connect to `localhost:6379` by default.
 
 ---
 
-Let me know which option you'd like to go with, or if you want to install **Redis from source** instead.
-
 </details>
+
+# Installing Redis and taking backup of the entire DB from Elasticache Redis to Redis Local Server
+
+<details>
+    <summary>Click to view Step-by-Step Plan</summary>
+
 
 ## ✅ Step-by-Step Plan
 
@@ -243,10 +255,6 @@ You can also query specific keys:
 
 ---
 
-Would you like me to prepare a `.sh` file to run both Python scripts automatically?
-
----
----
 The error you're seeing means that **your script is trying to connect to a Redis server on `localhost:6379`**, but **no Redis server is currently running there**, so the connection is refused:
 
 ```
@@ -346,7 +354,8 @@ done
 
 You should see non-zero values confirming restore.
 
+</details>
+
 ---
 
-Let me know if you want a `docker`-based Redis setup instead.
-
+# Installing Redis and taking backup of the single-single DB from Elasticache Redis to Redis Local Server
