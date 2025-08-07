@@ -1,6 +1,4 @@
-Thanks — you're using **Amazon Linux 2**, and by default, it **does not** include Redis in its standard repositories.
-
-Here are your **working options** to install Redis on Amazon Linux 2:
+# Installing Redis and Copying the entire DB from Elasticache Redis to Redis Local Server
 
 ---
 
