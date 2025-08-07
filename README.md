@@ -32,7 +32,6 @@ redis-cli ping
 # Output: PONG
 ```
 
----
 <details>
     <summary>Option 2: Use Redis via Docker (no system install required)</summary>
 
@@ -53,11 +52,11 @@ redis-cli ping
 
 And run your restore script — it will connect to `localhost:6379` by default.
 
----
-
 </details>
 
-# Installing Redis and taking backup of the entire DB from Elasticache Redis to Redis Local Server
+---
+
+# Installing Redis and taking backup of the entire 16 DB's from Elasticache Redis to Redis Local Server
 
 <details>
     <summary>Click to view Step-by-Step Plan</summary>
