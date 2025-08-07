@@ -1557,3 +1557,86 @@ python3 verify_deleted_keys.py
 * Your deleted keys are confirmed **gone** when `exists` returns 0.
 
 ---
+
+### Step 4: Loop through all Redis DBs (0 to 15) to restore from the specific key backup
+- `vi restore_selected_keys.py`
+```python
+import json
+import redis
+
+# Load the backup JSON
+with open('redis_backup.json') as f:
+    backup_data = json.load(f)
+
+r = redis.StrictRedis(host='127.0.0.1', port=6379)
+
+for key, entry in backup_data.items():
+    key_type = entry['type']
+    value = entry['value']
+    db = entry['db']
+
+    # Select the correct Redis DB
+    r.execute_command('SELECT', db)
+
+    if key_type == 'string':
+        r.set(key, value)
+
+    elif key_type == 'hash':
+        r.hmset(key, value)
+
+    elif key_type == 'list':
+        for item in value:
+            r.rpush(key, item)
+
+    elif key_type == 'set':
+        r.sadd(key, *value)
+
+    elif key_type == 'zset':
+        for item in value:
+            r.zadd(key, {item['member']: item['score']})
+
+    else:
+        print(f"⚠️ Skipping unsupported type for key: {key}")
+
+print("✅ Redis restore completed successfully.")
+```
+
+- Run the script
+  `python3 restore_selected_keys.py`
+
+---
+
+### Step 5: Verify those keys weather its backedup or not
+
+### Step by step checking all the keys
+
+```bash
+127.0.0.1:6379> select 5
+OK
+127.0.0.1:6379[5]> exists cabs.9278.live_details
+(integer) 1
+```
+
+That means:
+➡️ `cabs.9278.live_details` does exist in **DB 5** anymore.
+
+### 🔁 To Verify All Deleted Keys (Manually)
+
+Repeat for each of the deleted keys:
+
+```bash
+127.0.0.1:6379[5]> exists cabs.9274.live_details
+127.0.0.1:6379[5]> exists cabs.9272.live_details
+127.0.0.1:6379[5]> exists cabs.9271.live_details
+127.0.0.1:6379[5]> exists cabs.8954.live_details
+127.0.0.1:6379[5]> exists cabs.8950.live_details
+127.0.0.1:6379[5]> exists cabs.8945.live_details
+```
+
+Each one should return:
+
+```
+(integer) 1
+```
+
+---
