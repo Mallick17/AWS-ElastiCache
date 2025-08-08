@@ -2031,6 +2031,93 @@ print(f"\n✅ Backup complete. {len(backup_data)} keys saved to {output_file}")
 
 ---
 
+### Restoring those particular keys to the Elasticache
+
+```python
+import redis
+import json
+import base64
+import os
+
+# Config
+REDIS_HOST = "<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_PORT = 6379
+BACKUP_FILE = "backup_output/redis_backup_20250808_120530.json"  # Change to your backup file path
+
+# Safe encoder to handle Base64 or UTF-8 strings
+def safe_encode(value):
+    if isinstance(value, str):
+        try:
+            return value.encode("utf-8")
+        except Exception:
+            pass
+    try:
+        return base64.b64decode(value)
+    except Exception:
+        return str(value).encode("utf-8")
+
+# Load backup data
+with open(BACKUP_FILE, "r") as f:
+    backup_data = json.load(f)
+
+restored_count = 0
+
+# Restore keys
+for key, meta in backup_data.items():
+    db_index = meta["db"]
+    key_type = meta["type"]
+    value = meta["value"]
+
+    try:
+        r = redis.StrictRedis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=db_index,
+            socket_connect_timeout=5
+        )
+
+        key_bytes = safe_encode(key)
+
+        # Delete existing key if any
+        r.delete(key_bytes)
+
+        if key_type == "string":
+            r.set(key_bytes, safe_encode(value))
+
+        elif key_type == "hash":
+            hash_data = {safe_encode(k): safe_encode(v) for k, v in value.items()}
+            if hash_data:
+                r.hset(key_bytes, mapping=hash_data)
+
+        elif key_type == "list":
+            list_data = [safe_encode(v) for v in value]
+            if list_data:
+                r.rpush(key_bytes, *list_data)
+
+        elif key_type == "set":
+            set_data = [safe_encode(v) for v in value]
+            if set_data:
+                r.sadd(key_bytes, *set_data)
+
+        elif key_type == "zset":
+            zset_data = {safe_encode(v): score for v, score in value}
+            if zset_data:
+                r.zadd(key_bytes, zset_data)
+
+        else:
+            print(f"⚠️ Skipping unsupported type for key: {key_type}")
+            continue
+
+        restored_count += 1
+
+    except Exception as e:
+        print(f"❌ Error restoring key {key} (DB {db_index}): {e}")
+
+print(f"\n✅ Restore complete. {restored_count} keys restored from {BACKUP_FILE}")
+
+```
+
+---
 ### ✅ YES — It Can Work
 
 Python + `redis-py` can easily process 30,000 keys **one-by-one** from a `keys.txt` file and fetch their values from ElastiCache.
