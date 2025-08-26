@@ -395,7 +395,8 @@ DB 2: NOT RUNNING (Error: Connection reset by peer)
 
 ---
 
-## 1. Stop the cron schedule (prevent future runs)
+### 5. Stop the running cron
+## 5.1. Stop the cron schedule (prevent future runs)
 
 Edit the cron table:
 
@@ -415,7 +416,7 @@ This stops **new cron runs** from being scheduled.
 
 ---
 
-## 2. Kill the currently running cron process (if the script is still running)
+## 5.2. Kill the currently running cron process (if the script is still running)
 
 First, find the process:
 
@@ -437,7 +438,7 @@ kill -9 12345
 
 ---
 
-## 3. Stop all cron jobs (not usually recommended)
+## 5.3. Stop all cron jobs (not usually recommended)
 
 If you want to **stop the cron daemon completely**:
 
