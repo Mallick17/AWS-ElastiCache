@@ -394,3 +394,75 @@ DB 2: NOT RUNNING (Error: Connection reset by peer)
 ```
 
 ---
+
+Good question 👍 There are a few ways to **stop a running cron job** in Linux depending on whether you want to:
+
+---
+
+## 🛑 1. Stop the cron schedule (prevent future runs)
+
+Edit the cron table:
+
+```bash
+crontab -e
+```
+
+* Find the line:
+
+  ```bash
+  */1 * * * * /usr/local/bin/check_redis_dbs.sh
+  ```
+* Delete it (or comment it out with `#`).
+* Save and exit.
+
+This stops **new cron runs** from being scheduled.
+
+---
+
+## 🛑 2. Kill the currently running cron process (if the script is still running)
+
+First, find the process:
+
+```bash
+ps -ef | grep check_redis_dbs.sh
+```
+
+Example output:
+
+```
+root   12345  1  0 10:02 ?  00:00:00 /bin/bash /usr/local/bin/check_redis_dbs.sh
+```
+
+Kill it:
+
+```bash
+kill -9 12345
+```
+
+---
+
+## 🛑 3. Stop all cron jobs (not usually recommended)
+
+If you want to **stop the cron daemon completely**:
+
+```bash
+sudo systemctl stop crond   # Amazon Linux / RHEL
+sudo systemctl stop cron    # Ubuntu/Debian
+```
+
+To disable auto-start at boot:
+
+```bash
+sudo systemctl disable crond
+```
+
+---
+
+✅ For your case (just stopping the Redis health check job):
+
+* Remove the line from `crontab -e`
+* And kill the process if one is currently running.
+
+---
+
+Do you also want me to show you a **safer way** (using `systemd timer` instead of cron) so that you can start/stop the job easily with `systemctl start/stop redis-check.timer`?
