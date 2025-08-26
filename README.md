@@ -302,3 +302,110 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+
+Got it ✅ — you want a **Linux cron job** that will, during (or after) the ElastiCache Redis upgrade:
+
+* Check whether **all Redis DB indexes (0–15 by default, or more if configured)** are accessible.
+* Log the results (“running” or “not running”) to a file so you can audit later.
+
+---
+
+## 🔧 Steps
+
+### 1. Install Redis CLI
+
+Make sure your EC2/bastion/wherever the cron runs has `redis-cli` installed:
+
+```bash
+sudo yum install -y redis    # Amazon Linux / RHEL
+# or
+sudo apt-get install -y redis-tools  # Ubuntu/Debian
+```
+
+---
+
+### 2. Create a Health Check Script
+
+Create a script, e.g. `/usr/local/bin/check_redis_dbs.sh`:
+
+```bash
+#!/bin/bash
+# Check all Redis DB indexes and log result
+# Usage: ./check_redis_dbs.sh
+
+REDIS_HOST="your-redis-endpoint.amazonaws.com"
+REDIS_PORT=6379
+MAX_DB=15   # change if you have more DBs
+LOG_FILE="/var/log/redis_db_health.log"
+
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+
+echo "===== Redis DB Health Check at $TIMESTAMP =====" >> $LOG_FILE
+
+for DB in $(seq 0 $MAX_DB); do
+    # Try a PING on each DB
+    RESPONSE=$(redis-cli -h $REDIS_HOST -p $REDIS_PORT -n $DB PING 2>&1)
+
+    if [ "$RESPONSE" == "PONG" ]; then
+        echo "DB $DB: RUNNING" >> $LOG_FILE
+    else
+        echo "DB $DB: NOT RUNNING ($RESPONSE)" >> $LOG_FILE
+    fi
+done
+
+echo "" >> $LOG_FILE
+```
+
+Make it executable:
+
+```bash
+chmod +x /usr/local/bin/check_redis_dbs.sh
+```
+
+---
+
+### 3. Add Cron Job
+
+Edit cron with:
+
+```bash
+crontab -e
+```
+
+Add this line to run every 5 minutes during upgrade (adjust as needed):
+
+```bash
+*/5 * * * * /usr/local/bin/check_redis_dbs.sh
+```
+
+---
+
+### 4. View Logs
+
+All results will go into:
+
+```
+/var/log/redis_db_health.log
+```
+
+Sample log:
+
+```
+===== Redis DB Health Check at 2025-08-26 11:00:00 =====
+DB 0: RUNNING
+DB 1: RUNNING
+DB 2: NOT RUNNING (Error: Connection reset by peer)
+...
+```
+
+---
+
+## 🔒 Optional Improvements
+
+* **Alerting**: Add `mail` or `aws sns publish` in the script if any DB fails.
+* **Systemd timer** instead of cron (for more precise logging).
+* **Export to CloudWatch Logs**: `aws logs put-log-events` can send results to CloudWatch.
+
+---
+
+👉 Do you want me to extend this script so that if **any DB is NOT running**, it also **sends an alert (SNS/email/Slack)** in real-time instead of just logging?
