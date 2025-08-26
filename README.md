@@ -1,4 +1,4 @@
-# Back Up and Restore
+# Back Up and Restore via Console
 ## Scheduling automatic backups
 
 ElastiCache supports **automatic daily backups** for the following engines:
@@ -432,10 +432,6 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 * In the **Manage Tags** screen, choose the ❌ next to the tag
 * Save the changes
 
-</details>
-
----
-
 ### Cost Allocation Tags
 
 * Special tags used for **billing and usage tracking**
@@ -457,6 +453,8 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 * **ElastiCache API**
 
   * Use actions like `AddTagsToResource`, `ListTagsForResource`, etc.
+
+</details>
 
 ---
 
@@ -574,8 +572,6 @@ Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGr
 
 </details>
 
----
-
 ## ⚠**Important Notes**
 
 * You **cannot** seed a **cluster-mode disabled** Redis cluster from a backup created on a **cluster-mode enabled** one.
@@ -592,8 +588,11 @@ Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGr
 
 ---
 
-# **Where You Can Restore a Redis/Valkey Backup in ElastiCache**
+## **Where You Can Restore a Redis/Valkey Backup in ElastiCache**
 
+<details>
+  <summary>Click to view the Answers</summary>
+  
 ### 🔹 **1. Into a New Cluster**
 
 - **Yes, supported**
@@ -636,5 +635,7 @@ Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGr
   * Restart the Redis server to load it.
 
 ⚠️ **Caveat:** Make sure the Redis version matches or is compatible with the RDB file version.
+
+</details>
 
 ---
