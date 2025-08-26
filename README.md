@@ -303,13 +303,6 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
-Got it ✅ — you want a **Linux cron job** that will, during (or after) the ElastiCache Redis upgrade:
-
-* Check whether **all Redis DB indexes (0–15 by default, or more if configured)** are accessible.
-* Log the results (“running” or “not running”) to a file so you can audit later.
-
----
-
 ## 🔧 Steps
 
 ### 1. Install Redis CLI
