@@ -396,6 +396,10 @@ DB 2: NOT RUNNING (Error: Connection reset by peer)
 ---
 
 ### 5. Stop the running cron
+
+<details>
+  <summary>Click to view the steps to stop the cron</summary>
+
 ## 5.1. Stop the cron schedule (prevent future runs)
 
 Edit the cron table:
@@ -459,5 +463,7 @@ For the case (just stopping the Redis health check job):
 
 * Remove the line from `crontab -e`
 * And kill the process if one is currently running.
+
+</details>
 
 ---
