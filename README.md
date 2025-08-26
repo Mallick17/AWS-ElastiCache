@@ -464,5 +464,3 @@ sudo systemctl disable crond
 * And kill the process if one is currently running.
 
 ---
-
-Do you also want me to show you a **safer way** (using `systemd timer` instead of cron) so that you can start/stop the job easily with `systemctl start/stop redis-check.timer`?
