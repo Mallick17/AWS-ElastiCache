@@ -399,13 +399,3 @@ DB 2: NOT RUNNING (Error: Connection reset by peer)
 ```
 
 ---
-
-## 🔒 Optional Improvements
-
-* **Alerting**: Add `mail` or `aws sns publish` in the script if any DB fails.
-* **Systemd timer** instead of cron (for more precise logging).
-* **Export to CloudWatch Logs**: `aws logs put-log-events` can send results to CloudWatch.
-
----
-
-👉 Do you want me to extend this script so that if **any DB is NOT running**, it also **sends an alert (SNS/email/Slack)** in real-time instead of just logging?
