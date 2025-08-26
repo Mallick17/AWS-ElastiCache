@@ -1,4 +1,8 @@
 # Back Up and Restore via Console
+
+<details>
+  <summary>View Back Up and Restore via Console</summary>
+
 ## Scheduling automatic backups
 
 ElastiCache supports **automatic daily backups** for the following engines:
@@ -629,6 +633,10 @@ Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGr
   * Restart the Redis server to load it.
 
 ⚠️ **Caveat:** Make sure the Redis version matches or is compatible with the RDB file version.
+
+</details>
+
+---
 
 </details>
 
