@@ -1,5 +1,6 @@
 # Back Up and Restore
 ## Scheduling automatic backups
+
 ElastiCache supports **automatic daily backups** for the following engines:
 
 * **Redis OSS and Valkey (serverless or cluster mode)**
@@ -10,6 +11,10 @@ ElastiCache supports **automatic daily backups** for the following engines:
 * **Data Protection:** Helps prevent data loss by keeping daily snapshots.
 * **Quick Recovery:** In case of failure, you can restore the cache from the most recent backup.
 * **Warm Start:** The restored cache is preloaded with your data and ready for use.
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### How It Works
 
@@ -38,6 +43,8 @@ Configuration tools include:
 **Example Use Case:**
 If your app is running in production, enable automatic backups with a 7-day retention period and schedule the backup window during low-traffic hours (e.g., `23:30–00:30 UTC`) to ensure minimal operational interference.
 
+</details>
+
 ---
 
 ## Taking manual backups
@@ -46,6 +53,10 @@ If your app is running in production, enable automatic backups with a 7-day rete
 * **Persistent:** Manual backups are **retained indefinitely** until you choose to delete them.
 * **Independent:** Even if the cache is deleted, manual backups remain available.
 * **User-Controlled:** Manual backups must be deleted manually—no automatic expiration.
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### How to Create Manual Backups
 
@@ -86,10 +97,16 @@ Manual backups are supported for:
 * **Cluster mode enabled** and **disabled** Redis/Valkey
 * **All cache types** (Valkey, Redis OSS, Memcached)
 
+</details>
+
 ---
 
 ## Creating a Final Backup
 A **final backup** allows you to preserve your cache data right before deleting a cache or cluster. This ensures you have a snapshot you can restore from later, even after deletion.
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### Key Points
 
@@ -116,11 +133,17 @@ A **final backup** allows you to preserve your cache data right before deleting 
 
 > ✅ The final backup will be saved before the cache or cluster is permanently deleted.
 
+</details>
+
 ---
 
 ## Describing Backups
 
 You can list and inspect your ElastiCache backups using the AWS Management Console.
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 #### **Steps (Console):**
 
@@ -131,6 +154,8 @@ You can list and inspect your ElastiCache backups using the AWS Management Conso
    * Select the checkbox beside the backup name.
    * The backup details will be displayed.
 
+</details>
+
 ---
 
 ## Copying Backups
@@ -140,6 +165,10 @@ ElastiCache allows you to copy **any backup** — automatic or manual. This is u
 * Creating duplicates for testing or region-specific clusters
 * Preserving snapshots under different names
 * Preparing for export
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 #### **Steps to Copy a Backup (Console):**
 
@@ -152,6 +181,8 @@ ElastiCache allows you to copy **any backup** — automatic or manual. This is u
 
 > ✅ The backup copy will appear in the list of backups and can be used like any other snapshot.
 
+</details>
+
 ---
 
 ## **Exporting ElastiCache Backup to S3** (Console)
@@ -161,6 +192,10 @@ ElastiCache allows you to copy **any backup** — automatic or manual. This is u
 1. **Backup** exists in your ElastiCache dashboard (manual or automatic).
 2. **S3 Bucket** is created in the **same AWS Region** as the backup.
 3. **Permissions** are configured to allow ElastiCache to write to the S3 bucket.
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### **Step 1: Create an S3 Bucket**
 
@@ -239,6 +274,8 @@ Use this **bucket policy** (adjust region/bucket name):
   * Redis OSS or Valkey
   * Not supported for **data tiering** or **self-designed Memcached clusters**
 
+</details>
+
 ---
 
 ## Restore ElastiCache Backup into a New Cache
@@ -247,6 +284,10 @@ You can restore:
 * A **Redis OSS backup** → into a new **Redis OSS** cache
 * A **Valkey backup** → into a new **Valkey** cache
 * A **Memcached backup** → into a new **Memcached** serverless cache
+
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### **Option 1: Restore to Serverless Cache (Console)**
 
@@ -287,6 +328,8 @@ You can restore:
 
 > AWS will launch a new Redis/Valkey cluster and restore the snapshot during cluster creation.
 
+</details>
+
 ---
 
 > **_Notes_**:
@@ -308,7 +351,9 @@ You can restore:
 
   * They persist **even after** the associated cluster is removed
 
----
+<details>
+  <summary>Click to view the steps</summary>
+
 
 ### Deleting a Backup via Console
 
@@ -335,7 +380,7 @@ You can restore:
 * **ElastiCache API:**
   Use the [`DeleteSnapshot`](https://docs.aws.amazon.com/AmazonElastiCache/latest/APIReference/API_DeleteSnapshot.html) API operation
 
----
+</details>
 
 ### Caution:
 
@@ -370,6 +415,9 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 
 ### How to Manage Tags (Console)
 
+<details>
+  <summary>Click to view the steps</summary>
+  
 #### Add/Modify Tags:
 
 1. Open the [ElastiCache Console](https://console.aws.amazon.com/elasticache/)
@@ -383,6 +431,8 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 
 * In the **Manage Tags** screen, choose the ❌ next to the tag
 * Save the changes
+
+</details>
 
 ---
 
@@ -418,6 +468,9 @@ Migrate data from an **externally managed Valkey or Redis OSS** instance to a ne
 
 ## **Migration Steps**
 
+<details>
+  <summary>Click to view the steps</summary>
+  
 ### **Step 1: Create a Valkey or Redis OSS Backup**
 
 * Connect to your Redis OSS or Valkey instance.
@@ -518,6 +571,8 @@ aws elasticache create-cache-cluster \
 #### 🔹 Using **ElastiCache API**
 
 Use the `SnapshotArns` parameter in `CreateCacheCluster` or `CreateReplicationGroup` with the `.rdb` file ARN.
+
+</details>
 
 ---
 
