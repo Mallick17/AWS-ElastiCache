@@ -829,10 +829,10 @@ GET product:101:price
 
 ---
 
-# 
+# Backup and Restore from AWS Elasticache to Redis & Local and Vice Versa
 
 <details>
-  <summary>View Backip and Restore from AWS Elasticache to Redis & Local and Vice Versa</summary>
+  <summary>View Backup and Restore from AWS Elasticache to Redis & Local and Vice Versa</summary>
 
 # Installing Redis and taking backup of the DB from Elasticache Redis to Redis Local Server
 
