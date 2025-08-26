@@ -330,8 +330,6 @@ You can restore:
 
 </details>
 
----
-
 > **_Notes_**:
 > Restores **do not** overwrite existing clusters; always create a **new** one.
 > After restore, your data is available instantly once the new cache is **available**.
@@ -401,8 +399,6 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 | `Key: owner` → `team-x`     |
 | `Key: purpose` → `billing`  |
 
----
-
 ### Why Tag Backups?
 
 * **Organize** backups by purpose, owner, or environment
@@ -410,8 +406,6 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 * **Enable cost tracking** with **Cost Allocation Tags**
 
 > Example: You can track all `production` related backups in your AWS bill if you tag them with `environment=prod`.
-
----
 
 ### How to Manage Tags (Console)
 
@@ -458,7 +452,7 @@ Tags are **key-value pairs** that let you add **custom metadata** to ElastiCache
 
 ---
 
-# **Seeding a New ElastiCache for Redis OSS Cluster from an External Backup (.rdb)**
+## **Seeding a New ElastiCache for Redis OSS Cluster from an External Backup (.rdb)**
 
 ### Use Case
 
