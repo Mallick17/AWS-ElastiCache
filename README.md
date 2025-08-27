@@ -473,3 +473,161 @@ For the case (just stopping the Redis health check job):
 
 ---
 
+Perfect ✅ You’ve got a **flexible Redis health check script** running.
+Here’s a **clean documentation** for what you built, step by step:
+
+---
+
+# 📘 Redis Health Check Script – Documentation
+
+## 1. Purpose
+
+This script continuously checks whether a Redis instance is alive and reachable.
+It runs for a configurable duration, at a given interval, takes breaks between cycles, and logs success or failure with timestamps.
+
+---
+
+## 2. Script Location
+
+```bash
+/root/redis-health/redis_health.sh
+```
+
+---
+
+## 3. Script Content
+
+```bash
+#!/bin/bash
+# redis_health_flexible.sh
+# Simple & customizable Redis health check script
+
+# --- Configuration (YOU can modify these) ---
+REDIS_HOST="redtaxi-dev-version-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com" # Redis hostname
+REDIS_PORT=6379                  # Redis port
+RUN_DURATION=300                 # Run time in seconds (e.g., 300s = 5 minutes)
+CHECK_INTERVAL=60                # Interval between checks (seconds)
+BREAK_DURATION=300               # Break time between runs (seconds)
+CYCLES=4                         # How many times to repeat
+
+# --- Log files ---
+SUCCESS_LOG="/root/redis-health/redis_success.log"
+ERROR_LOG="/root/redis-health/redis_error.log"
+
+# --- Counter for Success logs ---
+COUNT=1
+
+for cycle in $(seq 1 $CYCLES); do
+    echo "=== Cycle $cycle started at $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$SUCCESS_LOG"
+    START_TIME=$(date +%s)
+    END_TIME=$((START_TIME + RUN_DURATION))
+
+    while [ $(date +%s) -lt $END_TIME ]; do
+        TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+        RESPONSE=$(/usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" PING 2>&1)
+
+        if [ "$RESPONSE" == "PONG" ]; then
+            echo "$TIMESTAMP SUCCESS $COUNT" >> "$SUCCESS_LOG"
+        else
+            echo "$TIMESTAMP FAILURE: $RESPONSE" >> "$ERROR_LOG"
+        fi
+
+        COUNT=$((COUNT+1))
+        sleep $CHECK_INTERVAL
+    done
+
+    if [ $cycle -lt $CYCLES ]; then
+        echo "=== Cycle $cycle completed, sleeping for $BREAK_DURATION seconds ===" >> "$SUCCESS_LOG"
+        sleep $BREAK_DURATION
+    fi
+done
+
+echo "=== All cycles finished at $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$SUCCESS_LOG"
+```
+
+---
+
+## 4. Configuration Parameters
+
+| Variable         | Description                               |
+| ---------------- | ----------------------------------------- |
+| `REDIS_HOST`     | Redis cluster/instance hostname           |
+| `REDIS_PORT`     | Redis port (default: 6379)                |
+| `RUN_DURATION`   | How long to check in each cycle (seconds) |
+| `CHECK_INTERVAL` | Interval between checks (seconds)         |
+| `BREAK_DURATION` | Pause time after each cycle (seconds)     |
+| `CYCLES`         | Number of cycles to repeat                |
+
+---
+
+## 5. Log Files
+
+* **Success Log:**
+  `/root/redis-health/redis_success.log`
+  Format:
+
+  ```
+  2025-08-27 07:35:01 SUCCESS 1
+  2025-08-27 07:36:01 SUCCESS 2
+  === Cycle 1 completed, sleeping for 300 seconds ===
+  ```
+
+* **Error Log:**
+  `/root/redis-health/redis_error.log`
+  Format:
+
+  ```
+  2025-08-27 07:37:10 FAILURE: Could not connect to Redis
+  ```
+
+---
+
+## 6. Run Manually
+
+```bash
+cd /root/redis-health
+nohup sh redis_health.sh > redis_health.out 2>&1 &
+```
+
+* Runs in background
+* Output stored in `redis_health.out`
+* Logs saved in `redis_success.log` and `redis_error.log`
+
+---
+
+## 7. Run with Cron
+
+To run automatically every hour:
+
+```bash
+crontab -e
+```
+
+Add:
+
+```cron
+0 * * * * /root/redis-health/redis_health.sh
+```
+
+---
+
+## 8. Example Run Cycle (with default settings)
+
+* Check every **60 seconds**
+* Run continuously for **5 minutes**
+* Take a **5 minute break**
+* Repeat **4 times**
+
+Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
+
+---
+
+✅ With this setup:
+
+* You have **continuous monitoring with controlled cycles**
+* Logs are **timestamped** for easy troubleshooting
+* Can be run **manually** or via **cron automation**
+
+---
+
+Do you want me to also include a **diagram/timeline (like check → break → check → break)** in the documentation so your team understands the cycle better?
