@@ -591,6 +591,19 @@ nohup sh redis_health.sh > redis_health.out 2>&1 &
 ---
 
 ## 7. Run with Cron
+To run manually
+- Want the script `redis_health.sh` (located in `/root/redis-health/`) to keep running **even after closing the SSH session**, It should start it with `nohup` like this:
+
+```bash
+cd /root/redis-health
+nohup sh redis_health.sh > redis_health.out 2>&1 &
+```
+
+* `nohup` → prevents the process from being killed when SSH closes.
+* `> redis_health.out 2>&1` → redirects both standard output and errors to a file (`redis_health.out`).
+* `&` → puts it in the background.
+
+---
 
 To run automatically every hour:
 
