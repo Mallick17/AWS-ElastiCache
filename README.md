@@ -305,6 +305,9 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 # Elasticache DB Version Upgrade, To check all the Elasticache DB Indexes weather running or not in Cron.
 
+<details>
+  <summary>View the steps to check all the Elasticache DB Indexes weather running or not in Cron.</summary>
+
 ## 🔧 Steps
 
 ### 1. Install Redis CLI
@@ -463,6 +466,8 @@ For the case (just stopping the Redis health check job):
 
 * Remove the line from `crontab -e`
 * And kill the process if one is currently running.
+
+</details>
 
 </details>
 
