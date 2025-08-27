@@ -468,11 +468,6 @@ For the case (just stopping the Redis health check job):
 
 ---
 
-Got it ✅
-Here’s a **step-by-step documentation** of the entire Redis health check automation you just implemented — from writing the script to running it with cron.
-
----
-
 # 📘 Redis Health Monitoring with Logs & Cron
 
 ## 1. Objective
