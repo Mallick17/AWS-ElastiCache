@@ -669,7 +669,7 @@ Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
 # Redis health check with temporary read/write tests, no leftover keys
 
 # --- Configuration ---
-REDIS_HOST="redtaxi-dev-version-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_HOST="<redis-elasticache-endpoint>.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
 REDIS_PORT=6379
 RUN_DURATION=1200        # Total run time in seconds
 CHECK_INTERVAL=10        # Interval between checks in seconds
