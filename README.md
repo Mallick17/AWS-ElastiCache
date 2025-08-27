@@ -473,11 +473,6 @@ For the case (just stopping the Redis health check job):
 
 ---
 
-Perfect ✅ You’ve got a **flexible Redis health check script** running.
-Here’s a **clean documentation** for what you built, step by step:
-
----
-
 # 📘 Redis Health Check Script – Documentation
 
 ## 1. Purpose
