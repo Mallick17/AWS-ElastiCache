@@ -496,7 +496,7 @@ Create the script in `/usr/local/bin/redis_health_cycle.sh`:
 # Script: redis_health_cycle.sh
 # Purpose: Check Redis every 10 sec for 5 mins, then 5 mins break, repeat 4 times.
 
-REDIS_HOST="redtaxi-dev-version-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_HOST="<your-endpoint-of-elasticache-redis>"
 REDIS_PORT=6379
 SUCCESS_LOG="/var/log/redis_success.log"
 ERROR_LOG="/var/log/redis_error.log"
