@@ -643,5 +643,3 @@ grep CRON /var/log/cron
 ✔ Automated with **cron every 40 minutes**.
 
 ---
-
-👉 Do you want me to also prepare a **short "Ops Runbook" version** (2–3 step cheatsheet) for your team so they don’t need to read the full doc?
