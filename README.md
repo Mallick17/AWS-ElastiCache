@@ -629,5 +629,3 @@ Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
 * Can be run **manually** or via **cron automation**
 
 ---
-
-Do you want me to also include a **diagram/timeline (like check → break → check → break)** in the documentation so your team understands the cycle better?
