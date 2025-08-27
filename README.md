@@ -645,7 +645,10 @@ Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
 
 ---
 
-# Redis Health Check Script – Read/Write Test (No Leftover Keys)
+# Redis Health Check Script – Read/Write Test (No Leftover Keys) --> No Replica or No Multi-AZ, Just Single Node
+
+<details>
+  <summary>Click to view the steps</summary>
 
 ## Script Overview
 
@@ -793,4 +796,43 @@ Add the line:
 * Review logs periodically to detect any transient failures.
 * For long-running monitoring, combine with `logrotate` to prevent log files from growing too large.
 
+Perfect! That’s exactly how you can measure downtime in a single-node ElastiCache setup with auto-failover. Here’s the sequence and what to expect:
+
 ---
+
+### 1️⃣ Before upgrade
+
+* Start your **read/write monitoring script** (the one with temporary keys).
+* It continuously logs `SUCCESS` in normal operation.
+
+### 2️⃣ During upgrade
+
+* AWS will **replace the node** with the new Redis version.
+* There will likely be a **few seconds of downtime**:
+
+  * SET/GET may fail temporarily → these failures get logged in `redis_error.log`.
+  * This is exactly the period your script captures as “downtime.”
+
+### 3️⃣ After upgrade
+
+* Once the node is back and healthy:
+
+  * SET/GET will succeed again → logged as `SUCCESS`.
+  * Your script will show the exact duration of downtime in your logs (number of failed checks × `CHECK_INTERVAL`).
+
+### 4️⃣ Notes
+
+* With **auto-failover enabled**, if the node had a replica, AWS would promote it temporarily to reduce downtime. But since you have **single-node**, the downtime is for the **whole duration of the upgrade**.
+* The **temporary keys** in your script ensure no leftover keys in Redis.
+
+---
+
+✅ **Tip:**
+
+* Keep `CHECK_INTERVAL` small (5–10 seconds) for precise downtime measurement.
+* Monitor both `redis_success.log` and `redis_error.log` during upgrade.
+
+</details>
+
+---
+
