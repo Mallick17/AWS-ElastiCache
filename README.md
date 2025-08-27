@@ -303,7 +303,7 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
-# Elasticache DB Version Upgrade, To check all the Elasticache DB Indexes weather running or not in Cron.
+# To check all the Elasticache DB Indexes weather running or not in Cron.
 
 <details>
   <summary>View the steps to check all the Elasticache DB Indexes weather running or not in Cron.</summary>
@@ -473,7 +473,10 @@ For the case (just stopping the Redis health check job):
 
 ---
 
-# 📘 Redis Health Check Script – Documentation
+# Redis Health Check Script – Documentation
+
+<details>
+  <summary>View the steps to check the Redis Health</summary>
 
 ## 1. Purpose
 
@@ -635,5 +638,9 @@ Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
 * You have **continuous monitoring with controlled cycles**
 * Logs are **timestamped** for easy troubleshooting
 * Can be run **manually** or via **cron automation**
+
+---
+
+</details>
 
 ---
