@@ -644,3 +644,153 @@ Total run time = (5 min check + 5 min break) × 4 = **40 minutes**
 </details>
 
 ---
+
+# Redis Health Check Script – Read/Write Test (No Leftover Keys)
+
+## Script Overview
+
+**Filename:** `redis_health_rw_check.sh`
+**Purpose:** Monitors Redis availability by performing temporary read/write operations. Tracks successes and failures without leaving any keys behind.
+
+**Key Features:**
+
+* Performs **temporary SET and GET** operations to confirm full read/write functionality.
+* **Deletes temporary keys immediately** after each check.
+* Logs **successes** and **errors** separately.
+* Customizable **check interval**, **total run duration**, and **number of cycles**.
+
+---
+
+## Script Content
+
+```bash
+#!/bin/bash
+# redis_health_rw_check.sh
+# Redis health check with temporary read/write tests, no leftover keys
+
+# --- Configuration ---
+REDIS_HOST="redtaxi-dev-version-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_PORT=6379
+RUN_DURATION=1200        # Total run time in seconds
+CHECK_INTERVAL=10        # Interval between checks in seconds
+CYCLES=1                 # Number of cycles
+
+# --- Log files ---
+SUCCESS_LOG="/root/redis-health/redis_success.log"
+ERROR_LOG="/root/redis-health/redis_error.log"
+
+# --- Counter for Success logs ---
+COUNT=1
+
+for cycle in $(seq 1 $CYCLES); do
+    echo "=== Cycle $cycle started at $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$SUCCESS_LOG"
+    START_TIME=$(date +%s)
+    END_TIME=$((START_TIME + RUN_DURATION))
+
+    while [ $(date +%s) -lt $END_TIME ]; do
+        TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+        TEMP_KEY="healthcheck_$RANDOM"
+
+        # Try SET
+        SET_RESPONSE=$(/usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$TEMP_KEY" "ok" 2>&1)
+        if [[ "$SET_RESPONSE" == "OK" ]]; then
+            # Try GET
+            GET_RESPONSE=$(/usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$TEMP_KEY" 2>&1)
+            # Delete the temporary key
+            /usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "$TEMP_KEY" >/dev/null 2>&1
+
+            if [[ "$GET_RESPONSE" == "ok" ]]; then
+                echo "$TIMESTAMP SUCCESS $COUNT: Redis read/write OK" >> "$SUCCESS_LOG"
+            else
+                echo "$TIMESTAMP FAILURE $COUNT: GET failed ($GET_RESPONSE)" >> "$ERROR_LOG"
+            fi
+        else
+            echo "$TIMESTAMP FAILURE $COUNT: SET failed ($SET_RESPONSE)" >> "$ERROR_LOG"
+        fi
+
+        COUNT=$((COUNT+1))
+        sleep $CHECK_INTERVAL
+    done
+done
+
+echo "=== All cycles finished at $(date '+%Y-%m-%d %H:%M:%S') ===" >> "$SUCCESS_LOG"
+```
+
+---
+
+## Configuration Options
+
+| Parameter        | Description                                       | Example Value                           |
+| ---------------- | ------------------------------------------------- | --------------------------------------- |
+| `REDIS_HOST`     | Redis primary endpoint                            | `redis-primary.xyz.cache.amazonaws.com` |
+| `REDIS_PORT`     | Redis port                                        | `6379`                                  |
+| `RUN_DURATION`   | Total duration of each cycle in seconds           | `1200` (20 min)                         |
+| `CHECK_INTERVAL` | Interval between each read/write check in seconds | `10`                                    |
+| `CYCLES`         | Number of cycles to repeat the checks             | `1`                                     |
+| `SUCCESS_LOG`    | File path to store successful operations          | `/root/redis-health/redis_success.log`  |
+| `ERROR_LOG`      | File path to store failures                       | `/root/redis-health/redis_error.log`    |
+
+---
+
+## Execution
+
+### 1. Ensure script is executable
+
+```bash
+chmod +x /root/redis-health/redis_health_rw_check.sh
+```
+
+### 2. Run the script in background using `nohup`
+
+```bash
+nohup bash /root/redis-health/redis_health_rw_check.sh > /root/redis-health/redis_health_rw.out 2>&1 &
+```
+
+* `nohup` ensures the script keeps running even if the terminal is closed.
+* Output and errors will be captured in `/root/redis-health/redis_health_rw.out`.
+
+### 3. Monitor logs
+
+* **Success log:** `/root/redis-health/redis_success.log`
+
+  * Shows timestamped successes with counter: `SUCCESS 1, SUCCESS 2 ...`
+* **Error log:** `/root/redis-health/redis_error.log`
+
+  * Shows timestamped failures if Redis is unresponsive or read/write fails.
+
+### 4. Optional: Run via cron
+
+To run the script **once every hour**:
+
+```bash
+crontab -e
+```
+
+Add the line:
+
+```bash
+0 * * * * /root/redis-health/redis_health_rw_check.sh
+```
+
+---
+
+## How It Works
+
+1. Each loop generates a **temporary key** (`healthcheck_<random>`).
+2. Performs a **SET** and then a **GET**.
+3. Immediately deletes the temporary key to avoid polluting Redis.
+4. Logs **successes** and **failures** with timestamps.
+5. Repeats for the specified **RUN\_DURATION** and **CYCLES**.
+
+✅ This ensures **full read/write validation** without leaving any keys behind.
+
+---
+
+## Notes / Best Practices
+
+* Adjust `CHECK_INTERVAL` to detect shorter downtime periods.
+* Use **primary Redis endpoint** for read/write validation.
+* Review logs periodically to detect any transient failures.
+* For long-running monitoring, combine with `logrotate` to prevent log files from growing too large.
+
+---
