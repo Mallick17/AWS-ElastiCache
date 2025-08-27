@@ -503,7 +503,7 @@ It runs for a configurable duration, at a given interval, takes breaks between c
 # Simple & customizable Redis health check script
 
 # --- Configuration (YOU can modify these) ---
-REDIS_HOST="redtaxi-dev-version-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com" # Redis hostname
+REDIS_HOST="<elasticahce-end-point>.bp8cjs.ng.0001.aps1.cache.amazonaws.com" # Redis hostname
 REDIS_PORT=6379                  # Redis port
 RUN_DURATION=300                 # Run time in seconds (e.g., 300s = 5 minutes)
 CHECK_INTERVAL=60                # Interval between checks (seconds)
