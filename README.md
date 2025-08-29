@@ -6247,9 +6247,16 @@ if __name__ == "__main__":
     backup_all_dbs()
 ```
 
-### Restore Script
+### Restore Script to local
 ```
 #!/usr/bin/env python3
+"""
+restore_all_dbs.py
+
+Restores keys into a Redis server from backup JSON files
+created by robust_chunk_redis_backup_all_keys.py.
+"""
+
 import redis
 import json
 import base64
@@ -6258,69 +6265,60 @@ import glob
 import time
 
 # ===== Config =====
-REDIS_HOST = "your-elasticache-endpoint.amazonaws.com"
+REDIS_HOST = "127.0.0.1"     # local Redis
 REDIS_PORT = 6379
-INPUT_DIR = "backup_output"   # Folder containing backup JSON files
-MAX_RETRIES = 5               # For network resilience
+INPUT_DIR = "backup_output"  # folder containing JSON backup files
+MAX_RETRIES = 5
 # ==================
 
-def safe_encode(value, is_binary=False):
-    """Restore binary-safe data: decode base64 if wrapped."""
-    if value is None:
+def safe_decode(wrapper):
+    """Decode serialized value from backup."""
+    if wrapper is None:
         return None
-    if is_binary:
-        return base64.b64decode(value.encode("ascii"))
-    return value.encode("utf-8")
+    if wrapper["_t"] == "str":
+        return wrapper["v"].encode("utf-8")
+    elif wrapper["_t"] == "b64":
+        return base64.b64decode(wrapper["v"].encode("ascii"))
+    else:
+        raise ValueError(f"Unknown wrapper type: {wrapper}")
 
 def restore_key(r, db_index, key, key_data):
     """Restore a single key into Redis."""
     key_type = key_data["type"]
     value = key_data["value"]
+    ttl = key_data.get("ttl", -1)
 
     # Ensure we select the correct DB
     r.execute_command("SELECT", db_index)
 
     if key_type == "string":
-        r.set(key, safe_encode(value["data"], value.get("is_binary", False)))
-
+        r.set(key, safe_decode(value))
     elif key_type == "hash":
-        decoded = {}
-        for f, v in value.items():
-            decoded[safe_encode(f, False)] = safe_encode(v["data"], v.get("is_binary", False))
+        decoded = { f: safe_decode(v) for f, v in value.items() }
         if decoded:
             r.hset(key, mapping=decoded)
-
     elif key_type == "set":
-        members = [
-            safe_encode(v["data"], v.get("is_binary", False)) for v in value
-        ]
+        members = [ safe_decode(v) for v in value ]
         if members:
             r.sadd(key, *members)
-
     elif key_type == "zset":
-        members = {}
-        for v in value:
-            members[safe_encode(v["member"]["data"], v["member"].get("is_binary", False))] = v["score"]
+        members = { safe_decode(m): score for m, score in value }
         if members:
             r.zadd(key, members)
-
     elif key_type == "list":
-        items = [safe_encode(v["data"], v.get("is_binary", False)) for v in value]
+        items = [ safe_decode(v) for v in value ]
         if items:
             r.rpush(key, *items)
-
     elif key_type == "stream":
-        entries = value
-        for entry in entries:
-            entry_id = entry["id"]
-            fields = {}
-            for f, v in entry["fields"].items():
-                fields[safe_encode(f, False)] = safe_encode(v["data"], v.get("is_binary", False))
-            # Reinsert with preserved entry ID
-            r.xadd(key, fields, id=entry_id)
-
+        for entry_id, fields in value:
+            decoded_fields = { f: safe_decode(v) for f, v in fields.items() }
+            r.xadd(key, decoded_fields, id=entry_id)
     else:
         print(f"⚠️ Skipping unknown type {key_type} for key {key}")
+
+    # Restore TTL if present
+    if ttl and ttl > 0:
+        r.expire(key, ttl)
 
 def main():
     files = sorted(glob.glob(os.path.join(INPUT_DIR, "redis_backup_db*_part_*.json")))
@@ -6335,13 +6333,15 @@ def main():
     total_keys = 0
     for file in files:
         print(f"📂 Restoring {file} ...")
-        with open(file, "r") as f:
-            data = json.load(f)
+        with open(file, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+
+        # Real keys are under "data"
+        data = parsed.get("data", {})
 
         for key, key_data in data.items():
             db_index = key_data.get("db", 0)
 
-            # Retry logic for network safety
             for attempt in range(MAX_RETRIES):
                 try:
                     restore_key(r, db_index, key, key_data)
