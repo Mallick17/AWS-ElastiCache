@@ -932,93 +932,250 @@ pip install redis
 Save this as `dump_redis_elasticache.py`:
 
 ```python
+#!/usr/bin/env python3
+"""
+robust_chunk_redis_backup_all_keys.py
+
+Backs up ALL keys from ALL Redis DBs in an ElastiCache endpoint.
+
+Features:
+- Binary-safe: distinguishes UTF-8 strings vs raw bytes (base64)
+- Memory-safe: SCAN/HSCAN/SSCAN/ZSCAN/XRANGE pagination
+- Strict paginated XRANGE for streams (no duplicates)
+- Retries on transient Redis errors
+- Atomic chunk writes with metadata
+- TTL preserved
+"""
+
 import redis
 import json
 import base64
 import os
-from datetime import datetime
+import time
+from functools import wraps
+from redis.exceptions import ConnectionError, TimeoutError
 
-# Config
-REDIS_HOST = "<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+# ===== Config =====
+REDIS_HOST = "your-elasticache-endpoint.amazonaws.com"
 REDIS_PORT = 6379
 OUTPUT_DIR = "backup_output"
-DB_RANGE = range(0, 16)  # Change if fewer DBs are used
+CHUNK_SIZE = 2500              # keys per JSON chunk file
+RETRY_LIMIT = 5
+RETRY_DELAY = 1.0              # seconds
+XRANGE_PAGE = 1000
+# ==================
 
-# Safe decoder for binary/non-UTF8 data
-def safe_decode(value):
-    if isinstance(value, str):
-        return value
-    try:
-        return value.decode("utf-8")
-    except Exception:
-        return base64.b64encode(value).decode("ascii")
-
-# Ensure output directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Loop through all DBs
-for db_index in DB_RANGE:
-    print(f"🔍 Dumping DB {db_index}...")
+# --- Retry decorator ---
+def retry(attempts=RETRY_LIMIT, delay=RETRY_DELAY, exceptions=(ConnectionError, TimeoutError)):
+    def deco(f):
+        @wraps(f)
+        def wrapped(*a, **kw):
+            last_exc = None
+            for i in range(attempts):
+                try:
+                    return f(*a, **kw)
+                except exceptions as e:
+                    last_exc = e
+                    print(f"⚠️ Redis transient error: {e} — retry {i+1}/{attempts} in {delay}s")
+                    time.sleep(delay)
+            raise last_exc
+        return wrapped
+    return deco
 
-    db_backup = {}
+# --- Serialization ---
+def safe_serialize(b):
+    """Return wrapper: {"_t":"str","v":...} or {"_t":"b64","v":...}"""
+    if b is None:
+        return {"_t": "str", "v": ""}
+    if isinstance(b, str):
+        return {"_t": "str", "v": b}
     try:
-        r = redis.StrictRedis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=db_index,
-            socket_connect_timeout=5
-        )
+        return {"_t": "str", "v": b.decode("utf-8")}
+    except Exception:
+        return {"_t": "b64", "v": base64.b64encode(b).decode("ascii")}
 
-        keys = r.keys("*")
-        print(f"  Found {len(keys)} keys.")
+# --- Atomic JSON write ---
+def atomic_write_json(obj, final_path):
+    tmp = final_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=2, ensure_ascii=False)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, final_path)
 
-        for key in keys:
-            try:
-                key_type = r.type(key).decode()
-                key_decoded = safe_decode(key)
+# --- Redis safe wrappers ---
+@retry()
+def safe_scan(r, cursor, match=None, count=1000):
+    return r.scan(cursor=cursor, match=match, count=count)
 
-                if key_type == "string":
-                    value = safe_decode(r.get(key))
+@retry()
+def safe_type(r, key):
+    return r.type(key)
 
-                elif key_type == "hash":
-                    raw = r.hgetall(key)
-                    value = {safe_decode(k): safe_decode(v) for k, v in raw.items()}
+@retry()
+def safe_get(r, key):
+    return r.get(key)
 
-                elif key_type == "set":
-                    value = [safe_decode(v) for v in r.smembers(key)]
+@retry()
+def safe_lrange(r, key, start, end):
+    return r.lrange(key, start, end)
 
-                elif key_type == "zset":
-                    value = [(safe_decode(v), score) for v, score in r.zrange(key, 0, -1, withscores=True)]
+@retry()
+def safe_hscan(r, key, cursor, count):
+    return r.hscan(key, cursor=cursor, count=count)
 
-                elif key_type == "list":
-                    value = [safe_decode(v) for v in r.lrange(key, 0, -1)]
+@retry()
+def safe_sscan(r, key, cursor, count):
+    return r.sscan(key, cursor=cursor, count=count)
 
-                else:
-                    print(f"⚠️ Unknown type for key: {key_decoded} (Type: {key_type})")
-                    continue
+@retry()
+def safe_zscan(r, key, cursor, count):
+    return r.zscan(key, cursor=cursor, count=count)
 
-                db_backup[key_decoded] = {
-                    "type": key_type,
-                    "value": value
-                }
+@retry()
+def safe_xrange(r, key, start_id='-', end_id='+', count=XRANGE_PAGE):
+    return r.xrange(key, min=start_id, max=end_id, count=count)
 
-            except Exception as e:
-                print(f"❌ Error processing key {safe_decode(key)}: {e}")
+@retry()
+def safe_ttl(r, key):
+    return r.ttl(key)
 
-    except Exception as conn_err:
-        print(f"🚫 Could not connect to DB {db_index}: {conn_err}")
-        continue
+# --- Stream collector ---
+def collect_stream_strict(r, key, page_size=XRANGE_PAGE):
+    entries = []
+    start = '-'
+    while True:
+        batch = safe_xrange(r, key, start_id=start, end_id='+', count=page_size)
+        if not batch:
+            break
+        if start != '-' and batch and batch[0][0].decode() == start:
+            batch = batch[1:]
+        if not batch:
+            break
+        for entry_id, fields in batch:
+            eid = entry_id.decode()
+            fm = {}
+            for fk, fv in fields.items():
+                try:
+                    fk_key = fk.decode("utf-8")
+                except Exception:
+                    fk_key = "__b64_field__" + base64.b64encode(fk).decode("ascii")
+                fm[fk_key] = safe_serialize(fv)
+            entries.append([eid, fm])
+        last_id = batch[-1][0].decode()
+        ms, seq = last_id.split('-')
+        start = f"{ms}-{int(seq)+1}"
+        if len(batch) < page_size:
+            break
+    return entries
 
-    # Save DB backup to a separate file
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_file = os.path.join(OUTPUT_DIR, f"dump_db_{db_index}_{timestamp}.json")
-    with open(output_file, "w") as f:
-        json.dump(db_backup, f, indent=2)
+# --- Key backup dispatcher ---
+def backup_key(r, key):
+    ktype = safe_type(r, key).decode()
+    if ktype == 'string':
+        return safe_serialize(safe_get(r, key))
+    elif ktype == 'hash':
+        out, cursor = {}, 0
+        while True:
+            cursor, batch = safe_hscan(r, key, cursor, 1000)
+            for f, v in batch.items():
+                try:
+                    fk = f.decode("utf-8")
+                except Exception:
+                    fk = "__b64_field__" + base64.b64encode(f).decode("ascii")
+                out[fk] = safe_serialize(v)
+            if cursor == 0:
+                break
+        return out
+    elif ktype == 'set':
+        members, cursor = [], 0
+        while True:
+            cursor, batch = safe_sscan(r, key, cursor, 1000)
+            for m in batch:
+                members.append(safe_serialize(m))
+            if cursor == 0:
+                break
+        return members
+    elif ktype == 'zset':
+        items, cursor = [], 0
+        while True:
+            cursor, batch = safe_zscan(r, key, cursor, 1000)
+            for m, score in batch:
+                items.append([safe_serialize(m), score])
+            if cursor == 0:
+                break
+        return items
+    elif ktype == 'list':
+        items, length, BATCH = [], r.llen(key), 1000
+        for start in range(0, length, BATCH):
+            chunk = safe_lrange(r, key, start, start+BATCH-1)
+            items.extend(safe_serialize(e) for e in chunk)
+        return items
+    elif ktype == 'stream':
+        return collect_stream_strict(r, key, XRANGE_PAGE)
+    else:
+        return None
 
-    print(f"✅ DB {db_index} backup complete. {len(db_backup)} keys saved to {output_file}")
+# --- Save chunk ---
+def save_chunk(chunk_obj, db_index, part_num):
+    meta = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "db": db_index,
+        "chunk_number": part_num,
+        "keys_in_chunk": len(chunk_obj)
+    }
+    out = {"_meta": meta, "data": chunk_obj}
+    filename = os.path.join(OUTPUT_DIR, f"redis_backup_db{db_index}_part_{part_num}.json")
+    atomic_write_json(out, filename)
+    print(f"💾 Saved {len(chunk_obj)} keys to {filename}")
 
-print("\n🎉 All DB backups complete.")
+# --- Main ---
+def backup_all_dbs():
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=False)
+    for db_index in range(0, 16):
+        try:
+            r.execute_command("SELECT", db_index)
+        except Exception:
+            break
 
+        print(f"\n🔍 Scanning DB {db_index}...")
+        cursor, chunk, part, found = 0, {}, 1, 0
+        while True:
+            cursor, keys = safe_scan(r, cursor, count=1000)
+            for key in keys:
+                try:
+                    key_str = key.decode("utf-8")
+                except Exception:
+                    key_str = "__b64_key__" + base64.b64encode(key).decode("ascii")
+
+                found += 1
+                try:
+                    val = backup_key(r, key)
+                    if val is None:
+                        print(f"⚠️ Unsupported type for key {key_str}; skipping")
+                        continue
+                    ttl = safe_ttl(r, key)
+                    chunk[key_str] = {"type": safe_type(r, key).decode(), "db": db_index, "value": val, "ttl": ttl}
+                except Exception as e:
+                    print(f"❌ Error reading key {key_str}: {e}")
+
+                if len(chunk) >= CHUNK_SIZE:
+                    save_chunk(chunk, db_index, part)
+                    chunk, part = {}, part+1
+
+            if cursor == 0:
+                break
+
+        if chunk:
+            save_chunk(chunk, db_index, part)
+        print(f"✅ DB {db_index} done. Keys backed up: {found}")
+
+    print("\n🎉 All DBs processed.")
+
+if __name__ == "__main__":
+    backup_all_dbs()
 ```
 
 Run:
@@ -1036,52 +1193,118 @@ This will create 7 files: `dump_db_0.json` to `dump_db_6.json`.
 Save this as `restore_to_local_redis.py`:
 
 ```python
+#!/usr/bin/env python3
+"""
+restore_all_dbs.py
+
+Restores keys into a Redis server from backup JSON files
+created by robust_chunk_redis_backup_all_keys.py.
+"""
+
 import redis
 import json
 import base64
+import os
+import glob
+import time
 
-DB_RANGE = range(0, 7)
+# ===== Config =====
+REDIS_HOST = "127.0.0.1"     # local Redis
+REDIS_PORT = 6379
+INPUT_DIR = "backup_output"  # folder containing JSON backup files
+MAX_RETRIES = 5
+# ==================
 
-def try_base64_decode(val):
-    try:
-        # Try decoding assuming it's base64
-        return base64.b64decode(val.encode('ascii'))
-    except Exception:
-        # If decoding fails, assume it's plain text
-        return val.encode('utf-8')
+def safe_decode(wrapper):
+    """Decode serialized value from backup."""
+    if wrapper is None:
+        return None
+    if wrapper["_t"] == "str":
+        return wrapper["v"].encode("utf-8")
+    elif wrapper["_t"] == "b64":
+        return base64.b64decode(wrapper["v"].encode("ascii"))
+    else:
+        raise ValueError(f"Unknown wrapper type: {wrapper}")
 
-def restore_db(db_index):
-    with open(f'dump_db_{db_index}.json') as f:
-        data = json.load(f)
-    r = redis.StrictRedis(host='localhost', port=6379, db=db_index)
+def restore_key(r, db_index, key, key_data):
+    """Restore a single key into Redis."""
+    key_type = key_data["type"]
+    value = key_data["value"]
+    ttl = key_data.get("ttl", -1)
 
-    for key, item in data.items():
-        t = item['type']
-        v = item['value']
-        key_b = try_base64_decode(key)
+    # Ensure we select the correct DB
+    r.execute_command("SELECT", db_index)
 
-        if t == 'string':
-            r.set(key_b, try_base64_decode(v))
+    if key_type == "string":
+        r.set(key, safe_decode(value))
+    elif key_type == "hash":
+        decoded = { f: safe_decode(v) for f, v in value.items() }
+        if decoded:
+            r.hset(key, mapping=decoded)
+    elif key_type == "set":
+        members = [ safe_decode(v) for v in value ]
+        if members:
+            r.sadd(key, *members)
+    elif key_type == "zset":
+        members = { safe_decode(m): score for m, score in value }
+        if members:
+            r.zadd(key, members)
+    elif key_type == "list":
+        items = [ safe_decode(v) for v in value ]
+        if items:
+            r.rpush(key, *items)
+    elif key_type == "stream":
+        for entry_id, fields in value:
+            decoded_fields = { f: safe_decode(v) for f, v in fields.items() }
+            r.xadd(key, decoded_fields, id=entry_id)
+    else:
+        print(f"⚠️ Skipping unknown type {key_type} for key {key}")
 
-        elif t == 'hash':
-            decoded_hash = {try_base64_decode(k): try_base64_decode(val) for k, val in v.items()}
-            r.hset(key_b, mapping=decoded_hash)
+    # Restore TTL if present
+    if ttl and ttl > 0:
+        r.expire(key, ttl)
 
-        elif t == 'list':
-            r.rpush(key_b, *[try_base64_decode(i) for i in v])
+def main():
+    files = sorted(glob.glob(os.path.join(INPUT_DIR, "redis_backup_db*_part_*.json")))
+    if not files:
+        print("❌ No backup files found.")
+        return
 
-        elif t == 'set':
-            r.sadd(key_b, *[try_base64_decode(i) for i in v])
+    print(f"🔄 Starting restore from {len(files)} files...")
 
-        elif t == 'zset':
-            r.zadd(key_b, {try_base64_decode(k): s for k, s in v})
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
 
-    print(f"✅ DB {db_index} restored.")
+    total_keys = 0
+    for file in files:
+        print(f"📂 Restoring {file} ...")
+        with open(file, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+
+        # Real keys are under "data"
+        data = parsed.get("data", {})
+
+        for key, key_data in data.items():
+            db_index = key_data.get("db", 0)
+
+            for attempt in range(MAX_RETRIES):
+                try:
+                    restore_key(r, db_index, key, key_data)
+                    break
+                except redis.ConnectionError as e:
+                    print(f"⚠️ Redis connection error on key {key}, retry {attempt+1}/{MAX_RETRIES}")
+                    time.sleep(2 ** attempt)
+                except Exception as e:
+                    print(f"❌ Error restoring key {key}: {e}")
+                    break
+
+            total_keys += 1
+
+        print(f"✅ Restored {len(data)} keys from {file}")
+
+    print(f"🎉 Restore complete. Total keys restored: {total_keys}")
 
 if __name__ == "__main__":
-    for db_index in DB_RANGE:
-        restore_db(db_index)
-    print("🎉 All Redis DBs restored successfully.")
+    main()
 
 ```
 
