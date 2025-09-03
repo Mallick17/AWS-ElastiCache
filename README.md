@@ -6221,3 +6221,148 @@ if __name__ == "__main__":
 </details>
 
 ---
+
+# To write in Elasticache from Local using Scripts
+
+### To write the missing keys in the specific db, Existing keys it will skip.
+
+```python
+#!/usr/bin/env python3
+"""
+robust_recreate_cabs.py
+
+Safely recreates missing cab_id hashes in Redis with robust handling.
+
+Features:
+- UTF-8 & binary safe
+- Retry on transient Redis errors
+- Pipelines for batch inserts
+- Skips existing keys (merge mode)
+- Structured logging and summary
+"""
+
+import redis
+import time
+import logging
+from functools import wraps
+from redis.exceptions import ConnectionError, TimeoutError
+
+# ===== Config =====
+REDIS_HOST = "redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_PORT = 6379
+REDIS_DB = 1
+RETRY_LIMIT = 5
+RETRY_DELAY = 1.0
+PIPELINE_BATCH = 100
+# ==================
+
+MISSING_CAB_IDS = [
+    3521, 5528, 5529, 5530, 5687, 5689, 5690, 5693,
+    5729, 5734, 5735, 5737, 5738, 5740, 5749, 5804,
+    5806, 5807, 5906, 5908, 5909, 5928, 5929, 5967,
+    6130, 6209, 6210, 6211, 6212, 6214, 6218, 6594,
+    6752, 6754, 6755, 6756, 6814, 6815, 6818, 6820,
+    6821, 6855, 6856, 6857, 6858, 6860, 6962, 7013,
+    60174, 60179, 60186, 60190, 60195, 60198, 60202, 60205,
+    60209, 60212, 60220, 60224, 60229, 60234
+]
+
+DEFAULT_HASH = {
+    "cab_id": "",  # will be filled dynamically
+    "latitude": "",
+    "longitude": "",
+    "recently_connected_at": "",
+    "speed": "",
+    "kms_since_last_login": "",
+    "bearing": "",
+    "total_login_hours_of_current_month": "0",
+    "total_trip_fare_of_current_month": "0",
+    "target_revenue_amount": "0",
+    "achieved_average_target_revenue": "0",
+    "total_login_hours_for_current_day": "0",
+    "target_revenue_amount_for_current_day": "0",
+    "achieved_average_target_revenue_for_current_day": "0",
+    "total_daily_collection_for_cab": "0",
+    "total_monthly_collection_for_cab": "0",
+    "achieved_total_daily_collection_for_cab": "0",
+    "achieved_total_monthly_collection_for_cab": "0",
+    "city_id": "",
+    "device_id": "",
+    "driver_id": "",
+    "driver_app_version": "",
+    "total_trip_fare_of_current_day": "0",
+    "total_rental_trip_fare_of_current_month": "0",
+    "total_outstation_trip_fare_of_current_month": "0",
+}
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+# --- Retry decorator ---
+def retry(attempts=RETRY_LIMIT, delay=RETRY_DELAY, exceptions=(ConnectionError, TimeoutError)):
+    def deco(f):
+        @wraps(f)
+        def wrapped(*a, **kw):
+            last_exc = None
+            for i in range(1, attempts + 1):
+                try:
+                    return f(*a, **kw)
+                except exceptions as e:
+                    last_exc = e
+                    logging.warning(f"⚠️ Transient Redis error: {e} — retry {i}/{attempts} in {delay}s")
+                    time.sleep(delay)
+            raise last_exc
+        return wrapped
+    return deco
+
+@retry()
+def get_redis():
+    return redis.StrictRedis(
+        host=REDIS_HOST,
+        port=REDIS_PORT,
+        db=REDIS_DB,
+        decode_responses=True,  # utf-8 safe
+    )
+
+def recreate_missing_keys():
+    r = get_redis()
+    created, skipped, failed = 0, 0, 0
+    pipe = r.pipeline()
+
+    for idx, cab_id in enumerate(MISSING_CAB_IDS, 1):
+        key = f"cabs.{cab_id}.live_details"
+        try:
+            if r.exists(key):
+                logging.info(f"✅ Skipping existing key: {key}")
+                skipped += 1
+                continue
+
+            new_hash = DEFAULT_HASH.copy()
+            new_hash["cab_id"] = str(cab_id)
+            pipe.hset(key, mapping=new_hash)
+            created += 1
+
+            # execute batch
+            if idx % PIPELINE_BATCH == 0:
+                pipe.execute()
+                pipe = r.pipeline()
+
+        except Exception as e:
+            logging.error(f"❌ Failed to create {key}: {e}")
+            failed += 1
+
+    # flush remaining
+    try:
+        pipe.execute()
+    except Exception as e:
+        logging.error(f"❌ Final pipeline execution failed: {e}")
+
+    logging.info(f"Summary → Created: {created}, Skipped: {skipped}, Failed: {failed}")
+
+if __name__ == "__main__":
+    recreate_missing_keys()
+```
+
+### To overwrite the existing keys, It will replace the entire value based on what we provide.
+
+```python
+```
