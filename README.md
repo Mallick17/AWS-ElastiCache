@@ -6248,7 +6248,7 @@ from functools import wraps
 from redis.exceptions import ConnectionError, TimeoutError
 
 # ===== Config =====
-REDIS_HOST = "redtaxi-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_HOST = "<your-end-point>-dev.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
 REDIS_PORT = 6379
 REDIS_DB = 1
 RETRY_LIMIT = 5
