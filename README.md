@@ -846,7 +846,7 @@ Perfect! That’s exactly how you can measure downtime in a single-node ElastiCa
 # redis_downtime_probe.sh
 # Continuous Redis read/write health check (no leftover keys)
 
-REDIS_HOST="redtaxi-dev-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_HOST="<your-end-point>-dev-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
 REDIS_PORT=6379
 RUN_DURATION=1200        # total runtime in seconds (30 min)
 CYCLES=1                 # number of cycles
