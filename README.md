@@ -303,6 +303,95 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 
 ---
 
+# AWS ElastiCache Redis Upgrade – Testing Environment
+
+## 1. Objective
+Upgrade the existing **AWS ElastiCache Redis (Testing Environment)** from version **5.0.6** to **7.1**, ensuring compatibility, stability, and no data loss.  
+
+This document outlines the **upgrade steps**, **configuration comparison**, and **validation plan**.
+
+---
+
+## 2. Upgrade Steps
+
+### **Step 1: Take Backup**
+- Create a **manual snapshot** of the current Redis cluster before upgrade.
+- Verify snapshot is available and restorable.
+
+> **AWS Console**:  
+ElastiCache → Redis → Snapshots → Create Snapshot → Name: `pre-upgrade-testing-redis-YYYYMMDD`
+
+---
+
+### **Step 2: Prepare for Upgrade**
+- Confirm target version `7.1` is supported.
+- Check application/library compatibility with Redis 7.
+- Review AWS documentation on [Supported Redis versions](https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/supported-engine-versions.html).
+
+---
+
+### **Step 3: Modify Redis Cluster**
+- Navigate to **ElastiCache → Redis → Modify Cluster**.
+- Change **Engine Version** from `5.0.6` → `7.1`.
+- A **new parameter group** (`default.redis7`) will be created automatically.
+- Keep all other settings the same (see comparison table below).
+- Select **Apply Immediately** (since this is test environment).
+
+---
+
+### **Step 4: Post-Upgrade Validation**
+- Verify cluster is in `available` state.
+- Confirm **parameter group** and **engine version** have updated.
+- Run application smoke tests:
+  - `PING`, `SET`, `GET` from Redis client.
+  - Application connectivity check.
+- Monitor CloudWatch metrics:
+  - CPU, Memory, Replica Lag, CurrConnections.
+- Review CloudWatch alarms for anomalies.
+
+---
+
+### **Step 5: Rollback Plan (If Needed)**
+- Restore from the pre-upgrade snapshot:
+  - Create a new cluster from the snapshot with Redis 5.0.6.
+  - Update application endpoints to point to restored cluster.
+- Note: In-place downgrade is **not supported**, rollback requires snapshot restore.
+
+---
+
+## 3. Configuration Comparison
+
+| **Component**            | **Current (Before Upgrade)**                        | **Target (After Upgrade)**            |
+|---------------------------|----------------------------------------------------|---------------------------------------|
+| **Engine (Redis/Valkey)**| 5.0.6                                              | 7.1                                   |
+| **Cluster Mode**          | Disabled                                           | Same                                  |
+| **Instance Type**         | cache.t3.micro                                    | Same                                  |
+| **Node Count**            | 1 Primary                                          | Same                                  |
+| **Parameter Group**       | default.redis5.0                                   | default.redis7                        |
+| **Subnet Group**          | redtaxi-redis                                      | Same                                  |
+| **Security Group**        | redtaxi-testing-elasticcache, rt-trsting-config-sg | Same                                  |
+| **Encryption**            | At-rest: Enabled<br>In-transit: Enabled            | Same                                  |
+| **Maintenance Window**    | Sunday 18:30                                       | Same                                  |
+| **Maintenance Duration**  | 1 hour                                             | Same                                  |
+| **Encryption at Rest**    | Disabled                                           | Same                                  |
+| **Encryption in Transit** | Disabled                                           | Same                                  |
+| **Monitoring / Alarms**   | CloudWatch (CPU, Memory, ReplicaLag)               | Same                                  |
+| **Auto Upgrade Minor Versions** | Enabled                                    | Same                                  |
+| **Amazon SNS Notifications** | Disabled                                       | Same                                  |
+
+---
+
+## 4. Validation Checklist ✅
+
+- [ ] Manual snapshot created and available  
+- [ ] Engine version updated to `7.1`  
+- [ ] New parameter group applied (`default.redis7`)  
+- [ ] Application smoke tests successful  
+- [ ] CloudWatch metrics within normal range  
+- [ ] No errors/warnings in application logs  
+
+
+---
 # To check all the Elasticache DB Indexes weather running or not in Cron.
 
 <details>
