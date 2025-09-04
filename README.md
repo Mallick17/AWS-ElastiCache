@@ -836,3 +836,60 @@ Perfect! That’s exactly how you can measure downtime in a single-node ElastiCa
 
 ---
 
+# Continous health check for the redis including milliseconds no sleep interval between checks
+
+<details>
+  <summary>Click to view the script</summary>
+
+```python
+#!/bin/bash
+# redis_downtime_probe.sh
+# Continuous Redis read/write health check (no leftover keys)
+
+REDIS_HOST="redtaxi-dev-upgrade-test.bp8cjs.ng.0001.aps1.cache.amazonaws.com"
+REDIS_PORT=6379
+RUN_DURATION=1200        # total runtime in seconds (30 min)
+CYCLES=1                 # number of cycles
+
+SUCCESS_LOG="/root/redis-downtime-continious/redis_success.log"
+ERROR_LOG="/root/redis-downtime-continious/redis_error.log"
+
+COUNT=1
+
+for cycle in $(seq 1 $CYCLES); do
+    echo "=== Cycle $cycle started at $(date '+%Y-%m-%d %H:%M:%S.%3N') ===" >> "$SUCCESS_LOG"
+    echo "=== Cycle $cycle started at $(date '+%Y-%m-%d %H:%M:%S.%3N') ===" >> "$ERROR_LOG"
+
+    START_TIME=$(date +%s)
+    END_TIME=$((START_TIME + RUN_DURATION))
+
+    while [ $(date +%s) -lt $END_TIME ]; do
+        TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S.%3N')  # include milliseconds
+        TEMP_KEY="healthcheck_$RANDOM"
+
+        # Try SET
+        SET_RESPONSE=$(/usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" SET "$TEMP_KEY" "ok" 2>&1)
+        if [[ "$SET_RESPONSE" == "OK" ]]; then
+            # Try GET
+            GET_RESPONSE=$(/usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" GET "$TEMP_KEY" 2>&1)
+            /usr/local/bin/redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" DEL "$TEMP_KEY" >/dev/null 2>&1
+
+            if [[ "$GET_RESPONSE" == "ok" ]]; then
+                echo "$TIMESTAMP SUCCESS $COUNT: Redis read/write OK" >> "$SUCCESS_LOG"
+            else
+                echo "$TIMESTAMP FAILURE $COUNT: GET failed → Response: $GET_RESPONSE" >> "$ERROR_LOG"
+            fi
+        else
+            echo "$TIMESTAMP FAILURE $COUNT: SET failed → Response: $SET_RESPONSE" >> "$ERROR_LOG"
+        fi
+
+        COUNT=$((COUNT+1))
+        # No sleep → full continuous probing
+    done
+done
+
+echo "=== All cycles finished at $(date '+%Y-%m-%d %H:%M:%S.%3N') ===" >> "$SUCCESS_LOG"
+echo "=== All cycles finished at $(date '+%Y-%m-%d %H:%M:%S.%3N') ===" >> "$ERROR_LOG"
+```
+  
+</details>
