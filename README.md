@@ -321,3 +321,168 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 - Memory: 6.38 GiB
 - Network Performance: Up to 12.5 Gigabit
 - Cost: 1 instance(nodes) x 0.164 USD hourly x (100 / 100 Utilized/Month) x 730 hours in a month = 119.7200 USD
+
+---
+
+## ElastiCache Redis OSS Metrics
+
+### **Quick Reference**
+
+| Metric                                         | Key Idea                        | Risk if High/Low                |
+| ---------------------------------------------- | ------------------------------- | ------------------------------- |
+| CPU Utilization                                | Server CPU load                 | High → slow responses           |
+| Engine CPU Utilization                         | Redis CPU load                  | High → Redis bottleneck         |
+| DB Memory Usage %                              | % of Redis memory used          | High → evictions                |
+| DB Capacity Usage %                            | % of instance memory used       | High → risk of out-of-memory    |
+| Cache Hit Rate                                 | How often cache served requests | Low → DB is queried more        |
+| Memory Fragmentation Ratio                     | Efficiency of memory usage      | High → wasted RAM               |
+| Swap Usage                                     | Disk memory usage               | >0 → Redis slows                |
+| Freeable Memory                                | Available memory                | Low → risk of failure           |
+| DB0 Avg TTL                                    | Key expiry time                 | Short → data lost quickly       |
+| Network Bytes In                               | Data received                   | Spike → heavy writes            |
+| Network Bytes Out                              | Data sent                       | Spike → heavy reads             |
+| Network Packets In                             | Number of packets received      | High → network stress           |
+| Network Packets Out                            | Number of packets sent          | High → network stress           |
+| Network Connections Tracked Allowance Exceeded | Connections beyond limit        | Clients rejected                |
+| Network Packets/sec Allowance Exceeded         | Packets/sec beyond limit        | Throttling                      |
+| Current Connections                            | Active client connections       | Too many → new clients rejected |
+
+<details>
+    <summary>Click to view detailed refference of Metrics</summary>
+
+### **1. CPU Utilization**
+
+* **What it is:** How much of the server’s CPU Redis is using (as a % of total CPU).
+* **Why it matters:** High CPU can slow Redis, causing delayed responses.
+* **Example:** If CPU is consistently 90%, maybe your queries are too heavy or you need bigger instance size.
+* **Scenario:** A sudden spike in GET/SET commands during peak traffic causes CPU to hit 95%, leading to slower response for clients.
+
+### **2. Engine CPU Utilization**
+
+* **What it is:** The CPU usage specifically by the Redis process itself, not the entire server.
+* **Why it matters:** Shows Redis workload separate from OS tasks.
+* **Scenario:** If Engine CPU is low but overall CPU is high, the server might be busy with other processes (like backups).
+
+### **3. Database Memory Usage Percentage**
+
+* **What it is:** Percentage of allocated Redis memory being used.
+* **Why it matters:** Redis is in-memory; if memory usage hits 100%, writes may be rejected or older keys evicted.
+* **Scenario:** If memory usage goes to 95%, your keys might start being evicted, causing cache misses.
+
+### **4. Database Capacity Usage Percentage**
+
+* **What it is:** How much of the total instance memory (or cluster capacity) is being used.
+* **Why it matters:** Shows the database load relative to instance size.
+* **Scenario:** Using 80% of capacity is fine, but hitting 100% triggers evictions and slows clients.
+
+### **5. Cache Hit Rate**
+
+* **What it is:** % of reads that found the data in Redis cache.
+* **Why it matters:** High cache hit = efficient caching; low hit = clients fetching from slower DB.
+* **Scenario:** Hit rate 95% → most reads served by Redis. Hit rate 50% → many requests fall back to database, slowing your app.
+
+### **6. Memory Fragmentation Ratio**
+
+* **What it is:** Ratio of memory allocated by OS to memory actually used by Redis.
+* **Why it matters:** High fragmentation wastes RAM, leading to inefficient memory usage.
+* **Scenario:** Ratio > 1.5 → Redis allocated 1.5GB but only using 1GB effectively. Might need memory defragmentation or resize instance.
+
+### **7. Swap Usage**
+
+* **What it is:** Memory Redis uses on disk (swap) instead of RAM.
+* **Why it matters:** Redis is in-memory; swapping kills performance.
+* **Scenario:** Swap usage > 0 → very slow responses, you should increase memory or reduce dataset.
+
+### **8. Freeable Memory**
+
+* **What it is:** Memory available for Redis to use or release.
+* **Why it matters:** Low freeable memory = risk of running out of memory.
+* **Scenario:** Freeable memory < 10MB → next big write may trigger eviction or failure.
+
+### **9. DB0 Average TTL**
+
+* **What it is:** Average time-to-live of keys in database 0.
+* **Why it matters:** Shows how long keys typically live before expiring.
+* **Scenario:** Average TTL = 60s → keys expire quickly, caching may not be effective. Average TTL = 24h → data sticks around longer, reducing DB hits.
+
+### **10. Network Bytes In**
+
+* **What it is:** Amount of data (in bytes) received by Redis from clients.
+* **Why it matters:** Shows client load on Redis.
+* **Scenario:** Large spike in inbound bytes → many clients are sending data, maybe bulk writes.
+
+### **11. Network Bytes Out**
+
+* **What it is:** Amount of data (in bytes) sent by Redis to clients.
+* **Why it matters:** High output means Redis is responding a lot; may saturate network.
+* **Scenario:** Outbound spike → your app is reading a lot of data from Redis (like mass GETs).
+
+### **12. Network Packets In**
+
+* **What it is:** Number of network packets received by Redis.
+* **Why it matters:** High number of small requests may overwhelm network even if bytes are low.
+* **Scenario:** Many clients sending frequent small commands → high packets in but low bytes.
+
+### **13. Network Packets Out**
+
+* **What it is:** Number of network packets sent by Redis.
+* **Why it matters:** Reflects response load. Many small responses = high packet count.
+
+### **14. Network Connections Tracked Allowance Exceeded**
+
+* **What it is:** How often Redis exceeded allowed network connections limit.
+* **Why it matters:** If exceeded → new connections rejected.
+* **Scenario:** During traffic spike, new clients can’t connect → need to increase max connections in config.
+
+### **15. Network Packets Per Second Allowance Exceeded**
+
+* **What it is:** How often Redis exceeded allowed network packets/sec limit.
+* **Why it matters:** Hitting limit may throttle traffic.
+* **Scenario:** High-frequency requests burst → some packets dropped, impacting performance.
+
+### **16. Current Connections**
+
+* **What it is:** Number of clients currently connected to Redis.
+* **Why it matters:** High connections = more load. Exceeding max connections → some clients can’t connect.
+* **Scenario:** Current connections = 5000, max allowed = 6000 → safe. If 7000 → new clients rejected.
+
+</details>
+
+---
+
+## **1. Crucial Metrics**
+
+| Metric                        | Safe                | Warning | Risk                                            |
+| ----------------------------- | ------------------- | ------- | ----------------------------------------------- |
+| **CPU Utilization**           | 0–60%               | 60–80%  | 80–100% (commands slow)                         |
+| **Engine CPU Utilization**    | 0–50%               | 50–75%  | 75–100% (Redis CPU bottleneck)                  |
+| **Database Memory Usage %**   | 0–70%               | 70–85%  | 85–100% (evictions may occur)                   |
+| **Database Capacity Usage %** | 0–70%               | 70–85%  | 85–100% (risk of memory shortage)               |
+| **Cache Hit Rate**            | 90–100%             | 75–90%  | <75% (most reads hitting DB)                    |
+| **Current Connections**       | <70% of max allowed | 70–90%  | >90% (new connections rejected)                 |
+| **Swap Usage**                | 0–1 MB              | 1–50 MB | >50 MB or growing steadily (performance impact) |
+
+## **2. Important Metrics**
+
+| Metric                         | Safe                                 | Warning        | Risk                                                                   |
+| ------------------------------ | ------------------------------------ | -------------- | ---------------------------------------------------------------------- |
+| **Memory Fragmentation Ratio** | 1–1.2                                | 1.2–1.5        | >1.5 (memory inefficient, may need defragmentation or bigger instance) |
+| **Freeable Memory**            | >30% of total RAM                    | 15–30%         | <15% (risk of eviction or hitting swap)                                |
+| **DB0 Average TTL**            | 5 min – 24 h (depending on workload) | 1–5 min        | <1 min (keys expire too fast, cache ineffective)                       |
+| **Network Bytes In / Out**     | Depends on instance/network size     | Monitor spikes | Sustained high values may saturate network                             |
+| **Network Packets In / Out**   | Depends on request pattern           | Monitor        | Exceeding network limits can throttle requests                         |
+
+## **3. Other / Optional Metrics**
+
+| Metric                                             | Safe | Warning | Risk                       |
+| -------------------------------------------------- | ---- | ------- | -------------------------- |
+| **Network Connections Tracked Allowance Exceeded** | 0    | 1–10    | >10 (connections rejected) |
+| **Network Packets Per Second Allowance Exceeded**  | 0    | 1–10    | >10 (network throttling)   |
+
+### **Practical Notes**
+
+1. **CPU & Memory** are the most immediate performance indicators.
+2. **Swap Usage** > 0 is okay if small, but growing swap is a red flag.
+3. **Cache Hit Rate** < 75% → you may need to adjust cache strategy or dataset.
+4. **Memory Fragmentation Ratio** is subtle — high fragmentation wastes memory even if usage looks low.
+5. **Network metrics** are mostly for scaling or spotting sudden spikes.
