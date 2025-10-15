@@ -302,3 +302,22 @@ Let’s break down a practical flow of this architecture:
 Amazon ElastiCache is an excellent solution for applications that require low-latency data access, high throughput, and the ability to scale dynamically. Its support for Redis and Memcached makes it a versatile tool for caching, real-time analytics, session management, and more. Redis, in particular, offers a rich set of features like persistence, complex data structures, and pub/sub messaging that makes it ideal for a wide range of use cases, from gaming leaderboards to session management and real-time notifications.
 
 ---
+
+## Elasticache Instances Cost
+### Common Parameters for all
+- Utilization (On-Demand only) --> Value = 100, Unit = %Utilised/Month
+- Cache Engine: Redis
+- Cache Node Type: Standard
+- Pricing model: On-Demand
+  
+#### cache.m5.large
+- vCPU: 2
+- Memory: 6.38 GiB
+- Network Performance: Up to 10 Gigabit
+- Cost: 1 instance(nodes) x 0.163 USD hourly x (100 / 100 Utilized/Month) x 730 hours in a month = 118.9900 USD
+
+### cache.m7g.large
+- vCPU: 2
+- Memory: 6.38 GiB
+- Network Performance: Up to 12.5 Gigabit
+- Cost: 1 instance(nodes) x 0.164 USD hourly x (100 / 100 Utilized/Month) x 730 hours in a month = 119.7200 USD
