@@ -490,12 +490,13 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 ---
 
 
-### Continuous live backup script
+### Continuous live backup script and restoring them
+**Continuous live backup script** that connects to your running **ElastiCache Redis**, continuously scans all DBs, and writes **all keys—including any new writes or updates**—to your local backup storage **in real time** during the Redis version upgrade.
 
 <details>
     <summary>Click to view steps</summary>
 
-**Continuous live backup script** that connects to your running **ElastiCache Redis**, continuously scans all DBs, and writes **all keys—including any new writes or updates**—to your local backup storage **in real time** during the Redis version upgrade.
+## Backup
 
 The key requirements are:
 
@@ -763,6 +764,202 @@ if __name__ == "__main__":
 1. **Start this script** before upgrade → it will capture the **pre-upgrade snapshot**.
 2. **Continue running it during the upgrade** → it will pick up any **live writes** in real time.
 3. **After upgrade**, all JSON files can be restored using the **restore script**.
+
+---
+
+## Restore
+1. Restores all keys from the backup JSON files.
+2. Only updates keys if their **current value in Redis is different** from the backup.
+3. Preserves existing keys that haven’t changed.
+4. Handles all Redis types (strings, hashes, sets, lists, zsets, streams).
+5. Works for **multiple incremental backup files** in chronological order.
+
+Here’s a robust restore script for that:
+
+```python
+#!/usr/bin/env python3
+"""
+safe_restore_redis.py
+
+Restores Redis keys from backup JSON files.
+- Only updates keys if the value has changed.
+- Handles all Redis data types.
+- Processes multiple incremental backup files safely.
+"""
+
+import redis
+import json
+import base64
+import os
+import glob
+import time
+
+# ===== Config =====
+REDIS_HOST = "127.0.0.1"
+REDIS_PORT = 6379
+REDIS_PASSWORD = None  # set if required
+INPUT_DIR = "backup_output"
+MAX_RETRIES = 5
+# ==================
+
+def safe_decode(wrapper):
+    """Decode serialized value from backup."""
+    if wrapper is None:
+        return None
+    if wrapper["_t"] == "str":
+        return wrapper["v"].encode("utf-8")
+    elif wrapper["_t"] == "b64":
+        return base64.b64decode(wrapper["v"].encode("ascii"))
+    else:
+        raise ValueError(f"Unknown wrapper type: {wrapper}")
+
+def get_current_value(r, key, key_type):
+    """Get current value from Redis in binary form."""
+    if key_type == "string":
+        return r.get(key)
+    elif key_type == "hash":
+        return {f: v for f, v in r.hgetall(key).items()}
+    elif key_type == "set":
+        return set(r.smembers(key))
+    elif key_type == "zset":
+        return {member: score for member, score in r.zrange(key, 0, -1, withscores=True)}
+    elif key_type == "list":
+        return r.lrange(key, 0, -1)
+    elif key_type == "stream":
+        return {eid: fields for eid, fields in r.xrange(key)}
+    else:
+        return None
+
+def restore_key_if_changed(r, db_index, key, key_data):
+    """Restore a single key only if its value has changed."""
+    key_type = key_data["type"]
+    backup_value = key_data["value"]
+    ttl = key_data.get("ttl", -1)
+
+    # Switch to correct DB
+    r.execute_command("SELECT", db_index)
+
+    # Get current value in Redis
+    current_value = get_current_value(r, key, key_type)
+
+    # Compare current value with backup
+    def values_differ():
+        if key_type == "string":
+            return current_value != safe_decode(backup_value)
+        elif key_type == "hash":
+            backup_decoded = {f: safe_decode(v) for f, v in backup_value.items()}
+            return backup_decoded != current_value
+        elif key_type == "set":
+            backup_decoded = set(safe_decode(v) for v in backup_value)
+            return backup_decoded != current_value
+        elif key_type == "zset":
+            backup_decoded = {safe_decode(m): score for m, score in backup_value}
+            return backup_decoded != current_value
+        elif key_type == "list":
+            backup_decoded = [safe_decode(v) for v in backup_value]
+            return backup_decoded != current_value
+        elif key_type == "stream":
+            backup_decoded = {eid: {f: safe_decode(v) for f, v in fields.items()} for eid, fields in backup_value}
+            return backup_decoded != current_value
+        return True
+
+    if not values_differ():
+        return  # No change, skip restoring
+
+    # Restore key
+    if key_type == "string":
+        r.set(key, safe_decode(backup_value))
+    elif key_type == "hash":
+        decoded = {f: safe_decode(v) for f, v in backup_value.items()}
+        if decoded:
+            r.hset(key, mapping=decoded)
+    elif key_type == "set":
+        members = [safe_decode(v) for v in backup_value]
+        if members:
+            r.delete(key)
+            r.sadd(key, *members)
+    elif key_type == "zset":
+        members = {safe_decode(m): score for m, score in backup_value}
+        if members:
+            r.delete(key)
+            r.zadd(key, members)
+    elif key_type == "list":
+        items = [safe_decode(v) for v in backup_value]
+        if items:
+            r.delete(key)
+            r.rpush(key, *items)
+    elif key_type == "stream":
+        r.delete(key)
+        for entry_id, fields in backup_value:
+            decoded_fields = {f: safe_decode(v) for f, v in fields.items()}
+            r.xadd(key, decoded_fields, id=entry_id)
+
+    # Restore TTL if present
+    if ttl and ttl > 0:
+        r.expire(key, ttl)
+
+def main():
+    files = sorted(glob.glob(os.path.join(INPUT_DIR, "redis_backup_db*_part_*.json")))
+    if not files:
+        print("❌ No backup files found.")
+        return
+
+    print(f"🔄 Starting safe restore from {len(files)} files...")
+
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, decode_responses=False)
+
+    total_keys = 0
+    for file in files:
+        print(f"📂 Processing {file} ...")
+        with open(file, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+
+        data = parsed.get("data", {})
+
+        for key, key_data in data.items():
+            db_index = key_data.get("db", 0)
+
+            for attempt in range(MAX_RETRIES):
+                try:
+                    restore_key_if_changed(r, db_index, key, key_data)
+                    break
+                except redis.ConnectionError as e:
+                    print(f"⚠️ Redis connection error on key {key}, retry {attempt+1}/{MAX_RETRIES}")
+                    time.sleep(2 ** attempt)
+                except Exception as e:
+                    print(f"❌ Error restoring key {key}: {e}")
+                    break
+
+            total_keys += 1
+
+        print(f"✅ Processed {len(data)} keys from {file}")
+
+    print(f"🎉 Safe restore complete. Total keys checked/restored: {total_keys}")
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### **How it Works**
+
+1. Reads **all backup files in order**.
+2. For each key:
+
+   * Compares **current Redis value** with **backup value**.
+   * Only restores **if the value differs**.
+3. Handles **all Redis types**, including streams.
+4. Maintains TTL for keys.
+5. Works incrementally with multiple backup files → safe for **live continuous backups**.
+
+---
+
+This ensures:
+
+* No overwriting of unchanged keys.
+* All updates during upgrade are captured and restored.
+* Works for **live incremental backups** created by your continuous backup scripts.
 
   
 </details>
