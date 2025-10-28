@@ -486,3 +486,283 @@ Amazon ElastiCache is an excellent solution for applications that require low-la
 3. **Cache Hit Rate** < 75% → you may need to adjust cache strategy or dataset.
 4. **Memory Fragmentation Ratio** is subtle — high fragmentation wastes memory even if usage looks low.
 5. **Network metrics** are mostly for scaling or spotting sudden spikes.
+
+---
+
+
+### Continuous live backup script
+
+<details>
+    <summary>Click to view steps</summary>
+
+**Continuous live backup script** that connects to your running **ElastiCache Redis**, continuously scans all DBs, and writes **all keys—including any new writes or updates**—to your local backup storage **in real time** during the Redis version upgrade.
+
+The key requirements are:
+
+1. **Connect to ElastiCache Redis** (can be in any VPC with network access).
+2. **Scan all DBs** (0–15) repeatedly.
+3. **Continuously detect new or updated keys** and save them into JSON files in your local system.
+4. **No sleep delays** that cause missing live writes. Minimal sleep (like 0.1s) is fine to avoid CPU spinning.
+5. **Handle all Redis types** (strings, lists, hashes, sets, zsets, streams).
+6. **Binary-safe**: keys and values may contain bytes, not just UTF-8 strings.
+7. **Safe for large datasets** using chunked JSON files.
+
+Here’s a ready-to-use **live backup script**:
+
+```python
+#!/usr/bin/env python3
+"""
+continuous_live_redis_backup.py
+
+Continuously backs up ALL keys from ALL Redis DBs to local JSON files.
+- Handles strings, hashes, sets, zsets, lists, streams
+- Chunked JSON files for memory efficiency
+- Continuously picks up new writes in real-time
+"""
+
+import redis
+import json
+import base64
+import os
+import time
+from functools import wraps
+
+# ===== Config =====
+REDIS_HOST = "your-elasticache-endpoint.amazonaws.com"
+REDIS_PORT = 6379
+REDIS_PASSWORD = None  # set if required
+OUTPUT_DIR = "backup_output"
+CHUNK_SIZE = 2500
+RETRY_LIMIT = 5
+RETRY_DELAY = 0.1
+XRANGE_PAGE = 1000
+# ==================
+
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# --- Retry decorator ---
+def retry(attempts=RETRY_LIMIT, delay=RETRY_DELAY, exceptions=(redis.ConnectionError, redis.TimeoutError)):
+    def deco(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            last_exc = None
+            for i in range(attempts):
+                try:
+                    return f(*args, **kwargs)
+                except exceptions as e:
+                    last_exc = e
+                    print(f"⚠️ Redis transient error: {e}, retry {i+1}/{attempts}")
+                    time.sleep(delay)
+            raise last_exc
+        return wrapped
+    return deco
+
+# --- Serialization ---
+def safe_serialize(b):
+    if b is None:
+        return {"_t": "str", "v": ""}
+    if isinstance(b, str):
+        return {"_t": "str", "v": b}
+    try:
+        return {"_t": "str", "v": b.decode("utf-8")}
+    except Exception:
+        return {"_t": "b64", "v": base64.b64encode(b).decode("ascii")}
+
+# --- Atomic write ---
+def atomic_write_json(obj, final_path):
+    tmp = final_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=2, ensure_ascii=False)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, final_path)
+
+# --- Redis safe wrappers ---
+@retry()
+def safe_scan(r, cursor, match=None, count=1000):
+    return r.scan(cursor=cursor, match=match, count=count)
+
+@retry()
+def safe_type(r, key):
+    return r.type(key)
+
+@retry()
+def safe_get(r, key):
+    return r.get(key)
+
+@retry()
+def safe_lrange(r, key, start, end):
+    return r.lrange(key, start, end)
+
+@retry()
+def safe_hscan(r, key, cursor, count):
+    return r.hscan(key, cursor=cursor, count=count)
+
+@retry()
+def safe_sscan(r, key, cursor, count):
+    return r.sscan(key, cursor=cursor, count=count)
+
+@retry()
+def safe_zscan(r, key, cursor, count):
+    return r.zscan(key, cursor=cursor, count=count)
+
+@retry()
+def safe_xrange(r, key, start_id='-', end_id='+', count=XRANGE_PAGE):
+    return r.xrange(key, min=start_id, max=end_id, count=count)
+
+@retry()
+def safe_ttl(r, key):
+    return r.ttl(key)
+
+# --- Stream collector ---
+def collect_stream_strict(r, key, page_size=XRANGE_PAGE):
+    entries = []
+    start = '-'
+    while True:
+        batch = safe_xrange(r, key, start_id=start, end_id='+', count=page_size)
+        if not batch:
+            break
+        if start != '-' and batch and batch[0][0].decode() == start:
+            batch = batch[1:]
+        if not batch:
+            break
+        for entry_id, fields in batch:
+            eid = entry_id.decode()
+            fm = {}
+            for fk, fv in fields.items():
+                try:
+                    fk_key = fk.decode("utf-8")
+                except Exception:
+                    fk_key = "__b64_field__" + base64.b64encode(fk).decode("ascii")
+                fm[fk_key] = safe_serialize(fv)
+            entries.append([eid, fm])
+        last_id = batch[-1][0].decode()
+        ms, seq = last_id.split('-')
+        start = f"{ms}-{int(seq)+1}"
+        if len(batch) < page_size:
+            break
+    return entries
+
+# --- Backup single key ---
+def backup_key(r, key):
+    ktype = safe_type(r, key).decode()
+    if ktype == 'string':
+        return safe_serialize(safe_get(r, key))
+    elif ktype == 'hash':
+        out, cursor = {}, 0
+        while True:
+            cursor, batch = safe_hscan(r, key, cursor, 1000)
+            for f, v in batch.items():
+                try:
+                    fk = f.decode("utf-8")
+                except Exception:
+                    fk = "__b64_field__" + base64.b64encode(f).decode("ascii")
+                out[fk] = safe_serialize(v)
+            if cursor == 0:
+                break
+        return out
+    elif ktype == 'set':
+        members, cursor = [], 0
+        while True:
+            cursor, batch = safe_sscan(r, key, cursor, 1000)
+            for m in batch:
+                members.append(safe_serialize(m))
+            if cursor == 0:
+                break
+        return members
+    elif ktype == 'zset':
+        items, cursor = [], 0
+        while True:
+            cursor, batch = safe_zscan(r, key, cursor, 1000)
+            for m, score in batch:
+                items.append([safe_serialize(m), score])
+            if cursor == 0:
+                break
+        return items
+    elif ktype == 'list':
+        items, length, BATCH = [], r.llen(key), 1000
+        for start in range(0, length, BATCH):
+            chunk = safe_lrange(r, key, start, start+BATCH-1)
+            items.extend(safe_serialize(e) for e in chunk)
+        return items
+    elif ktype == 'stream':
+        return collect_stream_strict(r, key, XRANGE_PAGE)
+    else:
+        return None
+
+# --- Save chunk ---
+def save_chunk(chunk_obj, db_index, part_num):
+    meta = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "db": db_index,
+        "chunk_number": part_num,
+        "keys_in_chunk": len(chunk_obj)
+    }
+    out = {"_meta": meta, "data": chunk_obj}
+    filename = os.path.join(OUTPUT_DIR, f"redis_backup_db{db_index}_part_{part_num}.json")
+    atomic_write_json(out, filename)
+    print(f"💾 Saved {len(chunk_obj)} keys to {filename}")
+
+# --- Main continuous backup ---
+def main():
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD, decode_responses=False)
+    last_seen = {}  # db_index -> last backup time
+    part_counter = {}  # db_index -> part number
+
+    while True:
+        for db_index in range(16):
+            try:
+                r.execute_command("SELECT", db_index)
+            except:
+                continue
+
+            cursor, chunk, part, found = 0, {}, part_counter.get(db_index, 1), 0
+            while True:
+                cursor, keys = safe_scan(r, cursor, count=1000)
+                for key in keys:
+                    found += 1
+                    val = backup_key(r, key)
+                    if val is None:
+                        continue
+                    ttl = safe_ttl(r, key)
+                    try:
+                        key_str = key.decode("utf-8")
+                    except:
+                        key_str = "__b64_key__" + base64.b64encode(key).decode("ascii")
+                    chunk[key_str] = {"type": safe_type(r, key).decode(), "db": db_index, "value": val, "ttl": ttl}
+                    if len(chunk) >= CHUNK_SIZE:
+                        save_chunk(chunk, db_index, part)
+                        chunk, part = {}, part+1
+                if cursor == 0:
+                    break
+            if chunk:
+                save_chunk(chunk, db_index, part)
+                part += 1
+            part_counter[db_index] = part
+        # almost no delay to capture live writes
+        time.sleep(0.1)
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+### ✅ **How it works**
+
+1. **Connects to ElastiCache Redis** and loops through DBs 0–15.
+2. Uses **SCAN/SSCAN/HSCAN/ZSCAN/XRANGE** to safely iterate large datasets without blocking Redis.
+3. **Writes chunks of keys** into JSON files (`CHUNK_SIZE=2500`) in `backup_output`.
+4. **Continuously scans** Redis for **new or updated keys**.
+5. Very small sleep (`0.1s`) to avoid CPU spinning but effectively runs continuously.
+
+---
+
+### **Workflow for Upgrade**
+
+1. **Start this script** before upgrade → it will capture the **pre-upgrade snapshot**.
+2. **Continue running it during the upgrade** → it will pick up any **live writes** in real time.
+3. **After upgrade**, all JSON files can be restored using the **restore script**.
+
+  
+</details>
