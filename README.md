@@ -963,3 +963,661 @@ This ensures:
 
   
 </details>
+
+
+---
+
+## Continious Backup and Scan and Update
+
+<details>
+    <summary>Click to view steps</summary>
+
+The error output indicates that the `continuous_redis_backup.py` script (misspelled as `continious_backup.py` in your command and history) is failing to connect to Redis at `127.0.0.1:6384` with a `ConnectionRefusedError: Error 111`. This suggests a configuration mismatch, as your Redis instance is running in a Docker container mapped to port `6384` externally but internally on port `6379`. Additionally, you’re testing with a local Redis setup (not ElastiCache), and the script’s previous SSL configuration caused issues. The goal is to ensure a robust full backup of all Redis databases (DBs 0–15) with continuous updates to the same backup files, compatible with your `restore_all_dbs.py` script, and to address the previous key count mismatch (e.g., DB1 dropping from 46,537 to 94 keys).
+
+Below, I’ll analyze the issue, explain why the connection failed, and provide an updated script that resolves the connection error, ensures all keys are backed up, and meets your requirements for both local Redis and potential ElastiCache use. I’ll also include debugging steps to prevent future key loss and verify the setup.
+
+### Analysis of the Error
+
+#### Error Breakdown
+- **Error Message**: `❌ Redis connection failed: Error 111 connecting to 127.0.0.1:6384. Connection refused.`
+- **Stack Trace**: The error occurs in `connect_redis()` during `r.ping()`, specifically when attempting to connect to `127.0.0.1:6384`.
+- **Cause**: The script is configured with `REDIS_HOST = "127.0.0.1"` and `REDIS_PORT = 6379`, but your Docker setup shows a Redis container (`redis-container99`, ID `63a834dd796d`) mapping port `6384` externally to `6379` internally (`0.0.0.0:6384->6379/tcp`). The script is trying to connect to `127.0.0.1:6384` inside the container, where no Redis server is listening, causing the connection refusal.
+- **Evidence**:
+  - Your `docker ps` output shows multiple Redis containers, with `redis-container99` mapped to `6384->6379`, and another (`redis-server`) on `6379->6379`.
+  - Your earlier `redis-cli` command connected to `127.0.0.1:6379` successfully, suggesting the `redis-server` container (ID `5e5dd8c2c4a1`) is the active one with the expected key counts (e.g., 46,537 in DB1).
+  - The script’s history shows you copied it to the `redis-container99` container (`63a834dd796d`), but the port mismatch (`6379` vs. `6384`) caused the failure.
+  - The previous SSL timeout error was resolved by setting `USE_SSL = False`, but the port issue persists.
+
+#### Why the Key Count Mismatch Occurred Previously
+- **SCAN Issues**: The earlier script used `SCAN_COUNT = 1000`, which might miss keys under heavy write loads due to Redis’s eventual consistency with `SCAN`.
+- **Unsupported Types**: Keys with non-standard types (e.g., from Redis modules) might be skipped if `read_key_value` returns `None`.
+- **Connection Errors**: Transient errors during backup might skip keys without sufficient retries.
+- **Incomplete Backup**: If the backup process was interrupted (e.g., by a `KeyboardInterrupt`), some chunks might not have been written.
+
+#### Docker Context
+- **Containers**:
+  - `redis-container99` (`63a834dd796d`): Port `6384->6379`, likely the target for the script.
+  - `redis-server` (`5e5dd8c2c4a1`): Port `6379->6379`, likely the one with the expected key counts from your `INFO KEYSPACE` output.
+- **Issue**: Running the script inside `redis-container99` with `REDIS_PORT = 6379` tries to connect to `127.0.0.1:6379` inside the container, which matches the internal Redis port. However, your error shows attempts to `127.0.0.1:6384`, suggesting a script modification or environment issue inside the container.
+
+### Updated Requirements
+1. **Full Backup**:
+   - Capture all keys from DBs 0–15 with types, values, TTLs, and DB index.
+   - Ensure compatibility with `restore_all_dbs.py`.
+   - Use high `SCAN_COUNT` (10,000) to minimize missed keys.
+   - Validate against `INFO KEYSPACE` (e.g., 46,537 keys in DB1).
+2. **Continuous Updates**:
+   - Monitor for new/updated keys without sleep, updating existing chunk files.
+   - Use hash-based change detection (including TTL).
+3. **Docker Compatibility**:
+   - Fix port configuration for Docker (`6379` inside the container, mapped to `6384` externally).
+   - Support running inside or outside the container.
+4. **ElastiCache Compatibility**:
+   - Allow configuration for ElastiCache with TLS and cluster mode.
+5. **Error Handling**:
+   - Log all errors to `logs/error.log` for downtime tracking.
+   - Retry connections with minimal delay.
+6. **Key Loss Prevention**:
+   - Log skipped keys (e.g., unsupported types) to diagnose previous losses.
+   - Validate backup completeness.
+
+### Fixes for the Connection Error
+- **Correct Port**: Set `REDIS_PORT = 6379` for running inside the Docker container, as Redis listens on `6379` internally.
+- **Host Flexibility**: Allow `REDIS_HOST` to be `localhost` or the container’s IP when running outside.
+- **Retry Logic**: Keep short retry delay (`0.1s`) to maintain continuous operation.
+- **Disable SSL**: Confirm `USE_SSL = False` for local Docker Redis.
+- **Container Context**: Provide instructions for running inside vs. outside the container.
+
+### Updated Backup Script
+
+```python
+#!/usr/bin/env python3
+"""
+continuous_redis_backup.py
+- Performs a full backup of all Redis DBs (0–15) with chunked JSON files.
+- Continuously monitors for new/updated keys, updating the same chunk files.
+- Logs all errors to track downtime (e.g., during ElastiCache upgrades).
+- Supports Docker Redis and ElastiCache with optional cluster mode and TLS.
+- Compatible with restore_all_dbs.py.
+"""
+import redis
+import json
+import base64
+import os
+import time
+import logging
+from redis.exceptions import ConnectionError, TimeoutError
+from redis.cluster import RedisCluster
+import hashlib
+import glob
+
+# ===== Config =====
+REDIS_HOST = "127.0.0.1"  # Use "redis-container99" if running outside Docker, or ElastiCache endpoint
+REDIS_PORT = 6379  # Internal Redis port in Docker (mapped to 6384 externally)
+REDIS_PASSWORD = None  # Set if auth enabled
+USE_CLUSTER = False  # Set to True for ElastiCache cluster mode
+USE_SSL = False  # Set to True for ElastiCache or TLS-enabled Redis
+OUTPUT_DIR = "backup_output"
+LOG_DIR = "logs"
+CHUNK_SIZE = 2500  # Keys per JSON chunk file
+XRANGE_PAGE = 1000
+SCAN_COUNT = 10000  # Increased for better coverage
+RETRY_DELAY = 0.1  # Short delay for retries
+RETRY_ATTEMPTS = 5  # Max retry attempts
+
+# ===== Setup =====
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+logging.basicConfig(
+    filename=os.path.join(LOG_DIR, "error.log"),
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
+# --- Helpers ---
+def safe_serialize(b):
+    if b is None:
+        return {"_t": "str", "v": ""}
+    if isinstance(b, str):
+        return {"_t": "str", "v": b}
+    try:
+        return {"_t": "str", "v": b.decode("utf-8")}
+    except Exception:
+        return {"_t": "b64", "v": base64.b64encode(b).decode("ascii")}
+
+def atomic_write_json(obj, final_path):
+    tmp = final_path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=2, ensure_ascii=False)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, final_path)
+
+def load_json_safely(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+def connect_redis():
+    attempt = 0
+    while attempt < RETRY_ATTEMPTS:
+        try:
+            if USE_CLUSTER:
+                r = RedisCluster(
+                    host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD,
+                    ssl=USE_SSL, ssl_cert_reqs=None if USE_SSL else None,
+                    decode_responses=False, socket_connect_timeout=5, socket_timeout=5
+                )
+            else:
+                r = redis.StrictRedis(
+                    host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD,
+                    ssl=USE_SSL, ssl_cert_reqs=None if USE_SSL else None,
+                    decode_responses=False, socket_connect_timeout=5, socket_timeout=5
+                )
+            r.ping()
+            logging.info("✅ Connected to Redis")
+            return r
+        except Exception as e:
+            attempt += 1
+            logging.error(f"❌ Redis connection failed (attempt {attempt}/{RETRY_ATTEMPTS}): {e}")
+            print(f"❌ Redis connection failed (attempt {attempt}/{RETRY_ATTEMPTS}): {e}")
+            if attempt < RETRY_ATTEMPTS:
+                time.sleep(RETRY_DELAY)
+    raise Exception("Failed to connect to Redis after maximum retries")
+
+def safe_call(func, *args, **kwargs):
+    try:
+        return func(*args, **kwargs)
+    except (ConnectionError, TimeoutError) as e:
+        logging.error(f"❌ Redis connection failed: {e}")
+        print(f"❌ Redis connection failed: {e}")
+        raise
+    except Exception as e:
+        logging.error(f"⚠️ Redis error: {e}")
+        print(f"⚠️ Redis error: {e}")
+        raise
+
+# --- Stream collector ---
+def collect_stream_strict(r, key, page_size=XRANGE_PAGE):
+    entries = []
+    start = '-'
+    while True:
+        batch = safe_call(r.xrange, key, min=start, max='+', count=page_size)
+        if not batch:
+            break
+        if start != '-' and batch and batch[0][0].decode() == start:
+            batch = batch[1:]
+        if not batch:
+            break
+        for entry_id, fields in batch:
+            eid = entry_id.decode()
+            fm = {}
+            for fk, fv in fields.items():
+                try:
+                    fk_key = fk.decode("utf-8")
+                except Exception:
+                    fk_key = "__b64_field__" + base64.b64encode(fk).decode("ascii")
+                fm[fk_key] = safe_serialize(fv)
+            entries.append([eid, fm])
+        last_id = batch[-1][0].decode()
+        ms, seq = last_id.split('-')
+        start = f"{ms}-{int(seq)+1}"
+        if len(batch) < page_size:
+            break
+    return entries
+
+# --- Key reader ---
+def read_key_value(r, key):
+    ktype = safe_call(r.type, key).decode()
+    key_str = key.decode("utf-8", errors="ignore")
+    logging.debug(f"Reading key {key_str} type {ktype}")
+    if ktype == 'string':
+        return safe_serialize(safe_call(r.get, key))
+    elif ktype == 'hash':
+        out, cursor = {}, 0
+        while True:
+            cursor, batch = safe_call(r.hscan, key, cursor, 1000)
+            for f, v in batch.items():
+                try:
+                    fk = f.decode("utf-8")
+                except Exception:
+                    fk = "__b64_field__" + base64.b64encode(f).decode("ascii")
+                out[fk] = safe_serialize(v)
+            if cursor == 0:
+                break
+        return out
+    elif ktype == 'list':
+        length = safe_call(r.llen, key)
+        if length == 0:
+            return []
+        items = safe_call(r.lrange, key, 0, length - 1)
+        return [safe_serialize(e) for e in items]
+    elif ktype == 'set':
+        members = safe_call(r.smembers, key)
+        return [safe_serialize(m) for m in members]
+    elif ktype == 'zset':
+        items = safe_call(r.zrange, key, 0, -1, withscores=True)
+        return [[safe_serialize(m), score] for m, score in items]
+    elif ktype == 'stream':
+        return collect_stream_strict(r, key, XRANGE_PAGE)
+    else:
+        logging.warning(f"Unsupported type {ktype} for key {key_str}")
+        return None
+
+# --- Save chunk ---
+def save_chunk(chunk_obj, db_index, part_num):
+    meta = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "db": db_index,
+        "chunk_number": part_num,
+        "keys_in_chunk": len(chunk_obj)
+    }
+    out = {"_meta": meta, "data": chunk_obj}
+    filename = os.path.join(OUTPUT_DIR, f"redis_backup_db{db_index}_part_{part_num}.json")
+    atomic_write_json(out, filename)
+    print(f"💾 Saved {len(chunk_obj)} keys to {filename}")
+
+# --- Update chunk ---
+def update_chunk(db_index, key_str, key_entry):
+    parts = [fn for fn in os.listdir(OUTPUT_DIR) if fn.startswith(f"redis_backup_db{db_index}_part_") and fn.endswith(".json")]
+    if not parts:
+        save_chunk({key_str: key_entry}, db_index, 1)
+        return
+    for fn in sorted(parts, key=lambda x: int(x.split("_part_")[1].split(".json")[0])):
+        path = os.path.join(OUTPUT_DIR, fn)
+        data = load_json_safely(path)
+        chunk_obj = data.get("data", {})
+        if key_str in chunk_obj or len(chunk_obj) < CHUNK_SIZE:
+            chunk_obj[key_str] = key_entry
+            data["_meta"]["keys_in_chunk"] = len(chunk_obj)
+            data["data"] = chunk_obj
+            atomic_write_json(data, path)
+            print(f"♻️ Updated key {key_str} in {fn}")
+            return
+    last_part_num = max(int(fn.split("_part_")[1].split(".json")[0]) for fn in parts)
+    save_chunk({key_str: key_entry}, db_index, last_part_num + 1)
+
+# --- Validate backup ---
+def validate_backup(r):
+    expected = {}
+    try:
+        info = safe_call(r.info, "keyspace")
+        for db in info:
+            if db.startswith("db"):
+                db_index = int(db[2:])
+                expected[db_index] = info[db]["keys"]
+    except Exception as e:
+        logging.error(f"❌ Failed to get keyspace info: {e}")
+        print(f"❌ Failed to get keyspace info: {e}")
+        return
+    actual = {}
+    for f in glob.glob(os.path.join(OUTPUT_DIR, "redis_backup_db*_part_*.json")):
+        with open(f, "r") as fh:
+            data = json.load(fh)
+            db_index = data["_meta"]["db"]
+            actual[db_index] = actual.get(db_index, 0) + len(data.get("data", {}))
+    for db_index in sorted(set(expected.keys()) | set(actual.keys())):
+        exp = expected.get(db_index, 0)
+        act = actual.get(db_index, 0)
+        print(f"DB {db_index}: Expected {exp} keys, Backed up {act} keys")
+        if exp != act:
+            logging.warning(f"Key count mismatch in DB {db_index}: expected {exp}, got {act}")
+
+# --- Full backup ---
+def full_backup(r):
+    dbs = [0] if USE_CLUSTER else range(0, 16)
+    for db_index in dbs:
+        try:
+            if not USE_CLUSTER:
+                safe_call(r.execute_command, "SELECT", db_index)
+        except Exception:
+            logging.warning(f"Skipping DB {db_index}: not accessible")
+            continue
+        print(f"\n🔍 Scanning DB {db_index}...")
+        cursor, chunk, part, found = 0, {}, 1, 0
+        while True:
+            try:
+                cursor, keys = safe_call(r.scan, cursor=cursor, count=SCAN_COUNT)
+            except Exception:
+                r = connect_redis()
+                if not USE_CLUSTER:
+                    safe_call(r.execute_command, "SELECT", db_index)
+                continue
+            for key in keys:
+                try:
+                    try:
+                        key_str = key.decode("utf-8")
+                    except Exception:
+                        key_str = "__b64_key__" + base64.b64encode(key).decode("ascii")
+                    found += 1
+                    val = read_key_value(r, key)
+                    if val is None:
+                        print(f"⚠️ Unsupported type for key {key_str}; skipping")
+                        continue
+                    ttl = safe_call(r.ttl, key)
+                    chunk[key_str] = {"type": safe_call(r.type, key).decode(), "db": db_index, "value": val, "ttl": ttl}
+                    if len(chunk) >= CHUNK_SIZE:
+                        save_chunk(chunk, db_index, part)
+                        chunk, part = {}, part + 1
+                except Exception as e:
+                    logging.error(f"❌ Error reading key {key_str}: {e}")
+                    print(f"❌ Error reading key {key_str}: {e}")
+            if cursor == 0:
+                break
+        if chunk:
+            save_chunk(chunk, db_index, part)
+        print(f"✅ DB {db_index} done. Keys backed up: {found}")
+    print("\n🎉 Full backup complete.")
+    validate_backup(r)
+
+# --- Continuous monitor ---
+def continuous_monitor(r):
+    meta_cache = {db: {} for db in ([0] if USE_CLUSTER else range(16))}
+    def value_hash(obj, ttl):
+        rep = json.dumps({"data": obj, "ttl": ttl}, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        return hashlib.md5(rep).hexdigest()
+    while True:
+        for db_index in meta_cache:
+            try:
+                if not USE_CLUSTER:
+                    safe_call(r.execute_command, "SELECT", db_index)
+            except Exception:
+                r = connect_redis()
+                continue
+            cursor = 0
+            while True:
+                try:
+                    cursor, keys = safe_call(r.scan, cursor=cursor, count=SCAN_COUNT)
+                except Exception:
+                    r = connect_redis()
+                    if not USE_CLUSTER:
+                        safe_call(r.execute_command, "SELECT", db_index)
+                    continue
+                for key in keys:
+                    try:
+                        try:
+                            key_str = key.decode("utf-8")
+                        except Exception:
+                            key_str = "__b64_key__" + base64.b64encode(key).decode("ascii")
+                        val = read_key_value(r, key)
+                        if val is None:
+                            continue
+                        ttl = safe_call(r.ttl, key)
+                        ktype = safe_call(r.type, key).decode()
+                        vh = value_hash({"type": ktype, "value": val}, ttl)
+                        prev = meta_cache[db_index].get(key_str)
+                        prev_vh = prev[1] if prev else None
+                        if prev_vh != vh:
+                            entry = {"type": ktype, "db": db_index, "value": val, "ttl": ttl}
+                            update_chunk(db_index, key_str, entry)
+                            meta_cache[db_index][key_str] = (ktype, vh, ttl)
+                    except Exception as e:
+                        logging.error(f"⚠️ Error processing key {key_str}: {e}")
+                        print(f"⚠️ Error processing key {key_str}: {e}")
+                if cursor == 0:
+                    break
+        validate_backup(r)
+
+# --- Main ---
+def main():
+    r = connect_redis()
+    full_backup(r)
+    print("\n🔄 Starting continuous monitoring...")
+    continuous_monitor(r)
+
+if __name__ == "__main__":
+    main()
+```
+
+### Changes Made
+1. **Fixed Port Issue**:
+   - Set `REDIS_PORT = 6379` to match the internal Redis port in the Docker container.
+   - Added note to use `REDIS_HOST = "redis-container99"` if running outside the container.
+2. **Retry Logic**:
+   - Added `RETRY_ATTEMPTS = 5` to limit retries and raise an exception if connection fails persistently.
+   - Kept `RETRY_DELAY = 0.1` for minimal delay.
+3. **Docker Compatibility**:
+   - Ensured `USE_SSL = False` for local Docker Redis.
+   - Added comments for running inside vs. outside the container.
+4. **Key Loss Prevention**:
+   - Retained `SCAN_COUNT = 10000` to capture all keys (e.g., 46,537 in DB1).
+   - Verbose logging for skipped keys and validation against `INFO KEYSPACE`.
+5. **ElastiCache Support**:
+   - Kept `USE_CLUSTER` and `USE_SSL` for flexibility.
+6. **Restore Compatibility**:
+   - Maintained JSON format (`_meta`, `data`, `db` field) for `restore_all_dbs.py`.
+
+### Updated Restore Script
+Your `restore_all_dbs.py` is robust, but I’ll align its configuration with the backup script for Docker and ElastiCache compatibility.
+
+```python
+#!/usr/bin/env python3
+"""
+restore_all_dbs.py
+Restores keys into a Redis server from backup JSON files created by continuous_redis_backup.py.
+Enhanced with verbose logging and key count summary.
+"""
+import redis
+import json
+import base64
+import os
+import glob
+import time
+from collections import defaultdict
+
+# ===== Config =====
+REDIS_HOST = "127.0.0.1"  # Use "redis-container99" if running outside Docker, or ElastiCache endpoint
+REDIS_PORT = 6379  # Internal Redis port in Docker (mapped to 6384 externally)
+REDIS_PASSWORD = None  # Set if auth enabled
+USE_SSL = False  # Set to True for ElastiCache or TLS-enabled Redis
+INPUT_DIR = "backup_output"
+LOG_DIR = "logs"
+MAX_RETRIES = 5
+
+# ===== Setup =====
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# --- Helpers ---
+def safe_decode(wrapper):
+    if wrapper is None:
+        return None
+    if wrapper["_t"] == "str":
+        return wrapper["v"].encode("utf-8")
+    elif wrapper["_t"] == "b64":
+        return base64.b64decode(wrapper["v"].encode("ascii"))
+    else:
+        raise ValueError(f"Unknown wrapper type: {wrapper}")
+
+def restore_key(r, db_index, key, key_data):
+    key_type = key_data["type"]
+    value = key_data["value"]
+    ttl = key_data.get("ttl", -1)
+    r.execute_command("SELECT", db_index)
+    if key_type == "string":
+        r.set(key, safe_decode(value))
+    elif key_type == "hash":
+        decoded = {f: safe_decode(v) for f, v in value.items()}
+        if decoded:
+            r.hset(key, mapping=decoded)
+    elif key_type == "set":
+        members = [safe_decode(v) for v in value]
+        if members:
+            r.sadd(key, *members)
+    elif key_type == "zset":
+        members = {safe_decode(m): score for m, score in value}
+        if members:
+            r.zadd(key, members)
+    elif key_type == "list":
+        items = [safe_decode(v) for v in value]
+        if items:
+            r.rpush(key, *items)
+    elif key_type == "stream":
+        for entry_id, fields in value:
+            decoded_fields = {f: safe_decode(v) for f, v in fields.items()}
+            r.xadd(key, decoded_fields, id=entry_id)
+    else:
+        print(f"⚠️ Skipping unknown type {key_type} for key {key}")
+        with open(os.path.join(LOG_DIR, "restore_errors.log"), "a") as log:
+            log.write(f"{time.ctime()}: Skipped key {key} (type {key_type})\n")
+    if ttl and ttl > 0:
+        r.expire(key, ttl)
+
+# --- Main ---
+def main():
+    files = sorted(glob.glob(os.path.join(INPUT_DIR, "redis_backup_db*_part_*.json")))
+    if not files:
+        print("❌ No backup files found.")
+        return
+    print(f"🔄 Starting restore from {len(files)} files...")
+    r = redis.StrictRedis(
+        host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD,
+        ssl=USE_SSL, ssl_cert_reqs=None if USE_SSL else None,
+        decode_responses=False
+    )
+    db_key_count = defaultdict(int)
+    total_keys = 0
+    for file in files:
+        print(f"\n📂 Restoring {file} ...")
+        with open(file, "r", encoding="utf-8") as f:
+            parsed = json.load(f)
+        data = parsed.get("data", {})
+        for key, key_data in data.items():
+            db_index = key_data.get("db", 0)
+            for attempt in range(MAX_RETRIES):
+                try:
+                    restore_key(r, db_index, key, key_data)
+                    break
+                except redis.ConnectionError as e:
+                    print(f"⚠️ Redis connection error on key {key}, retry {attempt+1}/{MAX_RETRIES}")
+                    with open(os.path.join(LOG_DIR, "restore_errors.log"), "a") as log:
+                        log.write(f"{time.ctime()}: Connection error on key {key}: {e}\n")
+                    time.sleep(2 ** attempt)
+                except Exception as e:
+                    print(f"❌ Error restoring key {key}: {e}")
+                    with open(os.path.join(LOG_DIR, "restore_errors.log"), "a") as log:
+                        log.write(f"{time.ctime()}: Error restoring key {key}: {e}\n")
+                    break
+            total_keys += 1
+            db_key_count[db_index] += 1
+        print(f"✅ Restored {len(data)} keys from {file}")
+    print("\n🎉 Restore complete!")
+    print("Summary per DB:")
+    for db_index in sorted(db_key_count.keys()):
+        print(f"  DB {db_index}: {db_key_count[db_index]} keys restored")
+    print(f"Total keys restored: {total_keys}")
+
+if __name__ == "__main__":
+    main()
+```
+
+### Usage Instructions
+#### Running Inside the Container (`redis-container99`)
+1. **Fix the Script Name**:
+   - Rename the script to correct the typo:
+     ```bash
+     mv /root/continious_backup.py /root/continuous_redis_backup.py
+     ```
+2. **Copy Updated Script**:
+   - From your host, copy the updated script:
+     ```bash
+     docker cp continuous_redis_backup.py 63a834dd796d:/root/
+     ```
+3. **Run the Script**:
+   - Inside the container:
+     ```bash
+     docker exec -it 63a834dd796d bash
+     python3 /root/continuous_redis_backup.py
+     ```
+   - Config: Keep `REDIS_HOST = "127.0.0.1"`, `REDIS_PORT = 6379`, `USE_SSL = False`.
+
+#### Running Outside the Container
+1. **Update Config**:
+   - Set `REDIS_HOST = "redis-container99"` or `REDIS_HOST = "127.0.0.1"`, `REDIS_PORT = 6384`.
+   - Example:
+     ```python
+     REDIS_HOST = "127.0.0.1"
+     REDIS_PORT = 6384
+     USE_SSL = False
+     ```
+2. **Run the Script**:
+   ```bash
+   python3 continuous_redis_backup.py
+   ```
+3. **Copy Backup Files**:
+   - If backups are created outside, copy to the container for restore:
+     ```bash
+     docker cp backup_output 63a834dd796d:/root/
+     ```
+
+#### For ElastiCache
+1. **Update Config**:
+   ```python
+   REDIS_HOST = "your-cluster.amazonaws.com"
+   REDIS_PORT = 6379
+   REDIS_PASSWORD = "your-auth-token"  # If auth enabled
+   USE_SSL = True
+   USE_CLUSTER = False  # True if cluster mode enabled
+   ```
+2. **Run on EC2**:
+   - Ensure the script runs in the same VPC with security group access to port 6379.
+
+#### Restore
+1. **Update `restore_all_dbs.py`**:
+   - Match `REDIS_HOST`, `REDIS_PORT`, `USE_SSL` to the backup config.
+2. **Run**:
+   - Inside the container:
+     ```bash
+     docker cp restore_all_dbs.py 63a834dd796d:/root/
+     docker exec -it 63a834dd796d bash
+     python3 /root/restore_all_dbs.py
+     ```
+   - Outside:
+     ```bash
+     python3 restore_all_dbs.py
+     ```
+
+### Debugging Tips
+1. **Verify Redis Port**:
+   - Inside the container:
+     ```bash
+     redis-cli -h 127.0.0.1 -p 6379 PING
+     ```
+   - Outside:
+     ```bash
+     redis-cli -h 127.0.0.1 -p 6384 PING
+     ```
+2. **Check Logs**:
+   - Look for “Unsupported type” or “Error reading key” in `logs/error.log`.
+   ```bash
+   cat logs/error.log
+   ```
+3. **Validate Key Counts**:
+   - After backup, check console output for `validate_backup` results.
+   - Compare with:
+     ```bash
+     redis-cli -h 127.0.0.1 -p 6384 INFO KEYSPACE
+     ```
+4. **Inspect Key Types**:
+   ```bash
+   redis-cli -h 127.0.0.1 -p 6384
+   SELECT 1
+   KEYS cabs.*.live_details
+   TYPE cabs.29860.live_details
+   ```
+5. **Check Container Network**:
+   - Ensure the container is accessible:
+     ```bash
+     docker inspect 63a834dd796d | grep IPAddress
+     ```
+
+### Addressing Key Count Mismatch
+- **High SCAN_COUNT**: `10000` reduces missed keys.
+- **Verbose Logging**: Captures skipped keys (e.g., unsupported types).
+- **Validation**: Compares backup counts with `INFO KEYSPACE`.
+- **Retry Logic**: Prevents key skips due to transient errors.
+- **Run During Low Load**: If possible, start the backup when write operations are minimal to avoid `SCAN` inconsistencies.
+
+If you intend to use ElastiCache, please provide the endpoint and cluster mode status. If the issue persists, share `logs/error.log` or sample key types from DB1, DB3, or DB5.
+  
+</details>
