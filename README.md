@@ -686,7 +686,7 @@ echo "=== All cycles finished at $(date '+%Y-%m-%d %H:%M:%S.%3N') ===" >> "$ERRO
 
 **Complete playbook** of **every proven technique** (beyond the Blue-Green + `SLAVEOF` pattern) that big companies use to **achieve true zero-downtime major version upgrades** in **AWS ElastiCache for Redis**.
 
-## TL;DR – All Zero-Downtime Paths
+## All Zero-Downtime Paths
 
 | Method | Zero Downtime? | Automation Level | Best For |
 |-------|----------------|------------------|---------|
