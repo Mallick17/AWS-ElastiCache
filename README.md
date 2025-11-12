@@ -1,4 +1,4 @@
-# Amazon ElastiCache
+<img width="1688" height="5456" alt="image" src="https://github.com/user-attachments/assets/ec3cc081-15ec-4b44-b0a3-77c10bcec55d" /># Amazon ElastiCache
 Amazon ElastiCache is a fully managed, scalable, and secure in-memory caching service provided by AWS (Amazon Web Services). It simplifies the process of setting up, operating, and scaling an in-memory data store or cache in the cloud. It is widely used to improve application performance by reducing the latency of accessing data and reducing the load on databases or backend services.
 
 ## ElastiCache Workflow of an Web Application
@@ -1621,3 +1621,372 @@ if __name__ == "__main__":
 If you intend to use ElastiCache, please provide the endpoint and cluster mode status. If the issue persists, share `logs/error.log` or sample key types from DB1, DB3, or DB5.
   
 </details>
+
+---
+
+## Continuous live streaming backup with automatic termination if no key changes are detected for a short interval(30ms)
+### Purpose:
+- Incrementally backs up all Redis databases and generates JSON files with changes. If no keys change for 30ms, it considers the backup final and creates a manifest.
+
+### Features:
+- Works with all Redis data types: string, hash, list, set, zset, stream.
+- Detects key changes using a SHA-256 hash of serialized key content + TTL.
+- Writes atomic JSON files to avoid partial writes.
+- Automatically stops once no changes are detected for a very short period (30ms).
+
+
+```python
+#!/usr/bin/env python3
+"""
+incremental_backup_daemon_final.py
+
+Incremental backup daemon that exits automatically if no keys change
+for a very short period (30ms), considering the last backup as final.
+"""
+
+import redis
+import time
+import os
+import json
+import base64
+import hashlib
+from datetime import datetime
+
+# ===== CONFIG =====
+REDIS_HOST = "127.0.0.1"
+REDIS_PORT = 6379
+SCAN_COUNT = 1000
+DB_MAX = 16
+ITER_INTERVAL = 0.03   # 30 milliseconds
+OUTPUT_BASE = "backups_final"
+# ===================
+
+os.makedirs(OUTPUT_BASE, exist_ok=True)
+
+def atomic_write_json(obj, path):
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=2, ensure_ascii=False)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, path)
+
+def base64_if_needed(b):
+    if b is None:
+        return {"_t": "str", "v": ""}
+    if isinstance(b, str):
+        return {"_t": "str", "v": b}
+    try:
+        return {"_t": "str", "v": b.decode("utf-8")}
+    except Exception:
+        return {"_t": "b64", "v": base64.b64encode(b).decode("ascii")}
+
+def serialize_value_for_type(r, key, ktype):
+    """Return JSON-serializable representation depending on type"""
+    if ktype == "string":
+        return base64_if_needed(r.get(key))
+    if ktype == "hash":
+        out = {}
+        cursor = 0
+        while True:
+            cursor, data = r.hscan(key, cursor=cursor, count=1000)
+            for f, val in data.items():
+                try:
+                    fk = f.decode("utf-8")
+                except Exception:
+                    fk = "__b64_field__" + base64.b64encode(f).decode("ascii")
+                out[fk] = base64_if_needed(val)
+            if cursor == 0:
+                break
+        return out
+    if ktype == "list":
+        length = r.llen(key)
+        items = []
+        BATCH = 1000
+        for start in range(0, length, BATCH):
+            chunk = r.lrange(key, start, start+BATCH-1)
+            items.extend(base64_if_needed(c) for c in chunk)
+        return items
+    if ktype == "set":
+        members = []
+        cursor = 0
+        while True:
+            cursor, batch = r.sscan(key, cursor=cursor, count=1000)
+            for m in batch:
+                members.append(base64_if_needed(m))
+            if cursor == 0:
+                break
+        return members
+    if ktype == "zset":
+        items = []
+        cursor = 0
+        while True:
+            cursor, batch = r.zscan(key, cursor=cursor, count=1000)
+            for m, score in batch:
+                items.append([base64_if_needed(m), score])
+            if cursor == 0:
+                break
+        return items
+    if ktype == "stream":
+        items = []
+        start = '-'
+        while True:
+            batch = r.xrange(key, min=start, max='+', count=1000)
+            if not batch:
+                break
+            if start != '-' and batch and batch[0][0].decode() == start:
+                batch = batch[1:]
+            for entry_id, fields in batch:
+                eid = entry_id.decode()
+                fm = {}
+                for fk, fv in fields.items():
+                    try:
+                        fk_k = fk.decode("utf-8")
+                    except Exception:
+                        fk_k = "__b64_field__" + base64.b64encode(fk).decode("ascii")
+                    fm[fk_k] = base64_if_needed(fv)
+                items.append([eid, fm])
+            if len(batch) < 1000:
+                break
+            last_id = batch[-1][0].decode()
+            ms, seq = last_id.split('-')
+            start = f"{ms}-{int(seq)+1}"
+        return items
+    return None
+
+def hash_key_entry(ktype, serialized_value, ttl):
+    import hashlib
+    h = hashlib.sha256()
+    h.update(ktype.encode("utf-8"))
+    h.update(b"\x00")
+    if isinstance(serialized_value, bytes):
+        h.update(serialized_value)
+    else:
+        h.update(serialized_value.encode("utf-8"))
+    h.update(b"\x00")
+    h.update(str(ttl).encode("utf-8"))
+    return h.hexdigest()
+
+def scan_db_for_changes(r, db_index, prev_hashes):
+    changed = {}
+    r.execute_command("SELECT", db_index)
+    cursor = 0
+    while True:
+        cursor, keys = r.scan(cursor=cursor, count=SCAN_COUNT)
+        for k in keys:
+            try:
+                k_raw = k if isinstance(k, (bytes, bytearray)) else k.encode("utf-8")
+                try:
+                    k_str = k_raw.decode("utf-8")
+                except Exception:
+                    k_str = "__b64_key__" + base64.b64encode(k_raw).decode("ascii")
+
+                ktype = r.type(k).decode() if isinstance(r.type(k), (bytes, bytearray)) else r.type(k)
+                ttl = r.ttl(k)
+                serialized = serialize_value_for_type(r, k, ktype)
+                serial_str = json.dumps(serialized, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+                h = hash_key_entry(ktype, serial_str, ttl)
+
+                if prev_hashes.get(k_str) != h:
+                    prev_hashes[k_str] = h
+                    changed[k_str] = {"type": ktype, "db": db_index, "ttl": ttl, "value": serialized}
+            except Exception:
+                continue
+        if cursor == 0:
+            break
+    return changed
+
+def run_loop():
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=False)
+    prev_hashes_per_db = {db: {} for db in range(DB_MAX)}
+
+    print("🔹 Starting incremental backup (final backup trigger: no changes for 30ms)...")
+    while True:
+        ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+        folder = os.path.join(OUTPUT_BASE, ts)
+        os.makedirs(folder, exist_ok=True)
+
+        all_changes = {}
+        changes_detected = False
+
+        for db in range(DB_MAX):
+            changes = scan_db_for_changes(r, db, prev_hashes_per_db[db])
+            if changes:
+                changes_detected = True
+                fname = os.path.join(folder, f"redis_changes_db{db}.json")
+                atomic_write_json({"_meta":{"generated_at":ts,"db":db,"changes":len(changes)}, "data":changes}, fname)
+                all_changes[db] = len(changes)
+                print(f"💾 {len(changes)} change(s) for DB {db} -> {fname}")
+
+        # If no changes detected, wait 30ms to confirm final
+        if not changes_detected:
+            time.sleep(2.0)  # 0.030 milliseconds
+            # scan again to be sure
+            final_changes = False
+            for db in range(DB_MAX):
+                changes = scan_db_for_changes(r, db, prev_hashes_per_db[db])
+                if changes:
+                    final_changes = True
+                    break
+            if not final_changes:
+                print("✅ No changes detected for 30ms. Considering this backup final.")
+                manifest = {"generated_at": ts, "per_db_changes": all_changes, "final_backup": True}
+                atomic_write_json(manifest, os.path.join(folder, "manifest.json"))
+                break
+
+        # write iteration manifest
+        manifest = {"generated_at": ts, "per_db_changes": all_changes}
+        atomic_write_json(manifest, os.path.join(folder, "manifest.json"))
+
+if __name__ == "__main__":
+    run_loop()
+```
+
+### Restore Script for the backup
+#### Purpose:
+- Restores Redis databases from JSON backup files generated by incremental_backup_daemon_final.py. Handles all key types and preserves TTLs.
+
+
+```python
+#!/usr/bin/env python3
+"""
+restore_all_dbs.py
+
+Reads backup files created by incremental_backup_daemon.py (and works with chunk files
+that follow {"_meta":..., "data": { key: {"type":..., "db":..., "value":..., "ttl":... } } } )
+
+Restores keys into the correct DB, preserving type and TTL.
+"""
+
+import redis
+import json
+import base64
+import os
+import glob
+import time
+from redis.exceptions import ConnectionError, TimeoutError
+
+# ===== CONFIG =====
+REDIS_HOST = "127.0.0.1"
+REDIS_PORT = 6379
+INPUT_DIR = "backups_final"        # can be 'backup_output' or the incremental backup dir
+MAX_RETRIES = 5
+# ==================
+
+def safe_decode(wrapper):
+    """Decode serialized value from backup wrapper produced by backup scripts."""
+    if wrapper is None:
+        return None
+    if wrapper["_t"] == "str":
+        return wrapper["v"].encode("utf-8")
+    elif wrapper["_t"] == "b64":
+        return base64.b64decode(wrapper["v"].encode("ascii"))
+    else:
+        raise ValueError(f"Unknown wrapper type: {wrapper}")
+
+def restore_key(r, db_index, key, key_data):
+    ktype = key_data.get("type")
+    value = key_data.get("value")
+    ttl = key_data.get("ttl", -1)
+    # select DB
+    r.execute_command("SELECT", db_index)
+    if ktype == "string":
+        r.set(key, safe_decode(value))
+    elif ktype == "hash":
+        decoded = { f: safe_decode(v) for f, v in value.items() }
+        if decoded:
+            r.hset(key, mapping=decoded)
+    elif ktype == "set":
+        members = [ safe_decode(v) for v in value ]
+        if members:
+            r.sadd(key, *members)
+    elif ktype == "zset":
+        members = { safe_decode(m): score for m, score in value }
+        if members:
+            r.zadd(key, members)
+    elif ktype == "list":
+        items = [ safe_decode(v) for v in value ]
+        if items:
+            r.rpush(key, *items)
+    elif ktype == "stream":
+        for entry_id, fields in value:
+            decoded_fields = { f: safe_decode(v) for f, v in fields.items() }
+            # xadd with id
+            r.xadd(key, decoded_fields, id=entry_id)
+    else:
+        print(f"⚠️ Skipping unknown key type {ktype} for key {key}")
+
+    if ttl and ttl > 0:
+        r.expire(key, ttl)
+
+def find_json_files(root):
+    """Find JSON files produced by either chunk backup script or incremental daemon."""
+    files = []
+    # look for incremental per-timestamp folders
+    for ts_folder in sorted(glob.glob(os.path.join(root, "*"))):
+        if os.path.isdir(ts_folder):
+            files.extend(sorted(glob.glob(os.path.join(ts_folder, "*.json"))))
+    # also include any flat JSONs in the root
+    files.extend(sorted(glob.glob(os.path.join(root, "*.json"))))
+    # dedupe while preserving order
+    seen = set(); out = []
+    for f in files:
+        if f not in seen and not os.path.basename(f).startswith("disconnect"):
+            seen.add(f); out.append(f)
+    return out
+
+def main():
+    files = find_json_files(INPUT_DIR)
+    if not files:
+        print("❌ No backup JSON files found under", INPUT_DIR)
+        return
+
+    print(f"🔁 Restoring from {len(files)} files...")
+    r = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT)
+
+    total = 0
+    for file in files:
+        print("📂 Restoring:", file)
+        try:
+            with open(file, "r", encoding="utf-8") as fh:
+                parsed = json.load(fh)
+        except Exception as e:
+            print(f"⚠️ Could not load {file}: {e}")
+            continue
+
+        data = parsed.get("data")
+        if not data:
+            print(f"  (no data found in {file})")
+            continue
+
+        for key, info in data.items():
+            # some incremental files include keys where key is the stringified key
+            # keys might be non-utf8 encoded in the backup; assume key is stored as a UTF-8 string or __b64_key__...
+            try:
+                if key.startswith("__b64_key__"):
+                    k = base64.b64decode(key[len("__b64_key__"):].encode("ascii"))
+                else:
+                    k = key
+            except Exception:
+                k = key
+            db_index = info.get("db", 0)
+            # perform retries
+            for attempt in range(MAX_RETRIES):
+                try:
+                    restore_key(r, db_index, k, info)
+                    break
+                except (ConnectionError, TimeoutError) as e:
+                    print(f"⚠️ Connection issue restoring {key}: {e}. retry {attempt+1}/{MAX_RETRIES}")
+                    time.sleep(2 ** attempt)
+                except Exception as e:
+                    print(f"❌ Failed restoring key {key}: {e}")
+                    break
+            total += 1
+
+        print(f"  Restored {len(data)} keys from {file}")
+
+    print(f"🎉 Restore completed. Total attempted keys: {total}")
+
+if __name__ == "__main__":
+    main()
+```
