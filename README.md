@@ -1,4 +1,4 @@
-<img width="1688" height="5456" alt="image" src="https://github.com/user-attachments/assets/ec3cc081-15ec-4b44-b0a3-77c10bcec55d" /># Amazon ElastiCache
+# Amazon ElastiCache
 Amazon ElastiCache is a fully managed, scalable, and secure in-memory caching service provided by AWS (Amazon Web Services). It simplifies the process of setting up, operating, and scaling an in-memory data store or cache in the cloud. It is widely used to improve application performance by reducing the latency of accessing data and reducing the load on databases or backend services.
 
 ## ElastiCache Workflow of an Web Application
